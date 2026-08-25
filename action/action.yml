@@ -29,12 +29,14 @@ runs:
         ARGS="${{ inputs.path }} --format sarif"
         if [ "${{ inputs.strict }}" = "true" ]; then ARGS="$ARGS --strict"; fi
         if [ "${{ inputs.fail-on-warning }}" = "true" ]; then ARGS="$ARGS --fail-on-warning"; fi
+        # Install skillmds to a private prefix and invoke its CLI entry with
+        # node directly — npx bin-linking is not reliable across npm versions
+        # (npm 11 runners fail to expose the package bins at all).
+        PREFIX="${RUNNER_TEMP:-/tmp}/skillmd-action"
+        npm install --prefix "$PREFIX" --no-audit --no-fund --silent skillmds@1
         # Write SARIF to a file regardless of exit code so it can still be uploaded.
-        # Invoke the skillmds package's default bin with a subcommand — it
-        # dispatches straight into the `skillmd` CLI. (Selecting the secondary
-        # `skillmd` bin via `npx -p` is not reliable across npm versions.)
         set +e
-        npx -y skillmds@1 lint $ARGS > skillmd.sarif
+        node "$PREFIX/node_modules/skillmds/bin/skillmd.mjs" lint $ARGS > skillmd.sarif
         echo "exit_code=$?" >> "$GITHUB_OUTPUT"
       id: lint
 
