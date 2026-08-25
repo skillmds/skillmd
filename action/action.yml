@@ -30,9 +30,11 @@ runs:
         if [ "${{ inputs.strict }}" = "true" ]; then ARGS="$ARGS --strict"; fi
         if [ "${{ inputs.fail-on-warning }}" = "true" ]; then ARGS="$ARGS --fail-on-warning"; fi
         # Write SARIF to a file regardless of exit code so it can still be uploaded.
-        # The `skillmd` CLI ships inside the `skillmds` package.
+        # Invoke the skillmds package's default bin with a subcommand — it
+        # dispatches straight into the `skillmd` CLI. (Selecting the secondary
+        # `skillmd` bin via `npx -p` is not reliable across npm versions.)
         set +e
-        npx -y -p skillmds@1 skillmd lint $ARGS > skillmd.sarif
+        npx -y skillmds@1 lint $ARGS > skillmd.sarif
         echo "exit_code=$?" >> "$GITHUB_OUTPUT"
       id: lint
 
