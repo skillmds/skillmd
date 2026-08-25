@@ -1,0 +1,65 @@
+{
+  "name": "@skillmd/core",
+  "version": "1.0.0",
+  "description": "SKILL.md parser, lint rules, security scanner, quality score, and text/JSON/SARIF/GitHub report formatters for Agent Skills.",
+  "license": "MIT",
+  "author": "SkillMD",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agent-skills",
+    "skill.md",
+    "skillmd",
+    "lint",
+    "validator",
+    "sarif",
+    "security-scanner",
+    "claude",
+    "ai-agents",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skillmds/skillmd.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://skillmd.com",
+  "bugs": {
+    "url": "https://github.com/skillmds/skillmd/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.0"
+  }
+}

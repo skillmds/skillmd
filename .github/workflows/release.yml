@@ -1,0 +1,71 @@
+name: release
+
+# Tag-driven npm publishing with provenance:
+#   core-vX.Y.Z  -> @skillmd/core
+#   vX.Y.Z       -> skillmds
+# The floating `v1` tag (GitHub Action pointer) never matches these globs.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "core-v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write # GitHub Release
+  id-token: write # npm provenance / trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      # npm Trusted Publishing (OIDC) needs npm >= 11.5.1; node 22 bundles npm 10.
+      - run: npm install -g npm@latest
+      - id: meta
+        shell: bash
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if [[ "$TAG" == core-v* ]]; then
+            echo "pkg=@skillmd/core" >> "$GITHUB_OUTPUT"
+            echo "dir=packages/core" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#core-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pkg=skillmds" >> "$GITHUB_OUTPUT"
+            echo "dir=packages/skillmds" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Tag must match package.json version
+        run: |
+          V=$(node -p "require('./${{ steps.meta.outputs.dir }}/package.json').version")
+          if [ "$V" != "${{ steps.meta.outputs.version }}" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match ${{ steps.meta.outputs.pkg }} version $V"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: skillmds only — @skillmd/core dep must resolve on the public registry
+        if: steps.meta.outputs.pkg == 'skillmds'
+        run: |
+          RANGE=$(node -p "require('./packages/skillmds/package.json').dependencies['@skillmd/core']")
+          npm view "@skillmd/core@$RANGE" version
+      - name: Publish to npm (provenance)
+        run: npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
+        env:
+          # Delete this env line (and the NPM_TOKEN secret) once npm Trusted
+          # Publishing is configured for both packages — OIDC then takes over.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub Release with CHANGELOG notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v v="${{ steps.meta.outputs.version }}" '$0 == "## " v { f = 1; next } /^## / { f = 0 } f' \
+            "${{ steps.meta.outputs.dir }}/CHANGELOG.md" > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md" > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "${{ steps.meta.outputs.pkg }}@${{ steps.meta.outputs.version }}" \
+            --notes-file notes.md

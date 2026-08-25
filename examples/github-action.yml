@@ -1,0 +1,24 @@
+# Lint every SKILL.md in your repo and upload results to GitHub Code Scanning.
+# Copy into .github/workflows/skillmd.yml
+name: skillmd
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write # for the SARIF upload
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: skillmds/skillmd/action@v1
+        with:
+          path: . # file or directory to lint
+          strict: "false" # treat warnings as errors
+          fail-on-warning: "false"
+          upload-sarif: "true"

@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in the CLI, the MCP server, or @skillmd/core misbehaves
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `skillmd --version` (or the @skillmd/core version)
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - skillmd CLI
+        - skillmds MCP server (stdio)
+        - Remote MCP server (api.skillmd.com/mcp)
+        - "@skillmd/core (library)"
+        - GitHub Action
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: What happened, and how to reproduce it
+      description: Exact command or tool call, what you expected, what you got. Include the SKILL.md content when a lint/scan result is the issue.
+      placeholder: |
+        1. Ran `skillmd add owner/name -a cursor`
+        2. Expected ... / got ...
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS + Node version (`node --version`)
+      placeholder: "Windows 11 / Node 22.11"
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        **Security issues:** please don't file them here — email hi@skillmd.com (see SECURITY.md).

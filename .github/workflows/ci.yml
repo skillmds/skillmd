@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 18 }
+          - { os: ubuntu-latest, node: 20 }
+          - { os: ubuntu-latest, node: 22 }
+          - { os: windows-latest, node: 22 }
+    runs-on: ${{ matrix.os }}
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - name: Pack sanity (files arrays resolve, no vendor/)
+        shell: bash
+        run: |
+          npm pack --dry-run -w @skillmd/core -w skillmds --json > packs.json
+          node -e "
+            const packs = require('./packs.json');
+            const files = packs.flatMap(t => t.files.map(f => f.path));
+            if (!files.includes('dist/cli.js')) throw new Error('skillmds tarball is missing dist/cli.js');
+            if (!files.includes('dist/index.d.ts')) throw new Error('core tarball is missing type declarations');
+            if (!files.includes('bin/skillmd-mcp.mjs')) throw new Error('skillmds tarball is missing the MCP bin');
+            if (files.some(f => f.startsWith('vendor/'))) throw new Error('vendor/ leaked into a tarball');
+            console.log('tarball contents OK (' + files.length + ' files)');
+          "
+      - name: CLI smoke (local build, offline)
+        shell: bash
+        run: |
+          node packages/skillmds/bin/skillmd.mjs --version
+          node packages/skillmds/bin/skillmd.mjs lint examples/skills
+          node packages/skillmds/bin/skillmd.mjs lint examples/skills --format sarif | node -e "JSON.parse(require('fs').readFileSync(0, 'utf8')); console.log('SARIF parses')"
+          node packages/skillmds/bin/skillmd.mjs rules > /dev/null
+          node packages/skillmds/bin/skillmd-mcp.mjs lint examples/skills
+
+  action-smoke:
+    # Exercises the composite action's wiring. Note it runs the *published*
+    # skillmds@1 from npm (that is what the action pins), not this checkout.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./action
+        with:
+          path: examples/skills
+          upload-sarif: "false"

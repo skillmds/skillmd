@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.tgz
+*.local
+.env
+.env.*
+.DS_Store

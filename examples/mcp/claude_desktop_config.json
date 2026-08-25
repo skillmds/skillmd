@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "skillmd": {
+      "command": "npx",
+      "args": ["-y", "skillmds"],
+      "env": {
+        "SKILLMD_TOKEN": ""
+      }
+    }
+  }
+}

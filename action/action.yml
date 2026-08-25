@@ -1,0 +1,52 @@
+name: "SkillMD Lint"
+description: "Validate SKILL.md files against the SkillMD spec and upload results to GitHub Code Scanning."
+branding:
+  icon: "check-circle"
+  color: "green"
+inputs:
+  path:
+    description: "Path to lint (file or directory)."
+    required: false
+    default: "."
+  strict:
+    description: "Treat warnings as errors."
+    required: false
+    default: "false"
+  fail-on-warning:
+    description: "Exit non-zero when warnings exist."
+    required: false
+    default: "false"
+  upload-sarif:
+    description: "Upload SARIF results to GitHub Code Scanning."
+    required: false
+    default: "true"
+runs:
+  using: "composite"
+  steps:
+    - name: Run skillmd lint (SARIF)
+      shell: bash
+      run: |
+        ARGS="${{ inputs.path }} --format sarif"
+        if [ "${{ inputs.strict }}" = "true" ]; then ARGS="$ARGS --strict"; fi
+        if [ "${{ inputs.fail-on-warning }}" = "true" ]; then ARGS="$ARGS --fail-on-warning"; fi
+        # Write SARIF to a file regardless of exit code so it can still be uploaded.
+        # The `skillmd` CLI ships inside the `skillmds` package.
+        set +e
+        npx -y -p skillmds@1 skillmd lint $ARGS > skillmd.sarif
+        echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+      id: lint
+
+    - name: Upload SARIF
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: skillmd.sarif
+        category: skillmd
+
+    - name: Fail if lint failed
+      shell: bash
+      run: |
+        if [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
+          echo "skillmd lint reported problems (exit ${{ steps.lint.outputs.exit_code }})."
+          exit 1
+        fi

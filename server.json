@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "com.skillmd/skillmd",
+  "description": "Search, fetch, lint, and install Agent Skills (SKILL.md) from the SkillMD registry.",
+  "status": "active",
+  "version": "1.1.0",
+  "websiteUrl": "https://skillmd.com",
+  "repository": {
+    "url": "https://github.com/skillmds/skillmd",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "skillmds",
+      "version": "1.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SKILLMD_TOKEN",
+          "description": "SkillMD personal access token (enables skillmd_list_saved and personalized recommendations)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SKILLMD_API",
+          "description": "Override the registry API base URL",
+          "isRequired": false
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.skillmd.com/mcp"
+    }
+  ]
+}
