@@ -50,7 +50,13 @@ Releases are tag-driven; CI publishes to npm with provenance.
    - Publishing order matters when both change: core first — the `skillmds` release job refuses to publish until its `@skillmds/core` range resolves on npm.
 4. CI publishes the package and creates a GitHub Release with the matching CHANGELOG section.
 5. If the GitHub Action changed, move the floating tag: `git tag -f v1 && git push -f origin v1` (the release workflow only matches three-part tags, so `v1` never triggers it).
-6. Re-publish the MCP registry entry when `server.json` changed: `mcp-publisher publish` (requires the `com.skillmd` domain verification).
+6. Re-publish the MCP registry entry when `server.json` changed (bump its two `version` fields to match the npm release first). Ownership of the `com.skillmd` namespace is proven over HTTP: skillmd.com serves the Ed25519 public key at `/.well-known/mcp-registry-auth`; the private key lives outside the repo (`~/.skillmd/mcp-registry-key.pem` on the maintainer machine). Then:
+   ```bash
+   PRIVATE_KEY="$(openssl pkey -in ~/.skillmd/mcp-registry-key.pem -noout -text | grep -A3 priv: | tail -n +2 | tr -d " :
+")"
+   mcp-publisher login http --domain skillmd.com --private-key "$PRIVATE_KEY"
+   mcp-publisher publish
+   ```
 
 ## Security issues
 
