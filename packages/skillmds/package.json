@@ -55,7 +55,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@clack/prompts": "^0.8.0",
+    "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.13.0",
     "@skillmds/core": "^1.0.0",
     "commander": "^12.1.0",
