@@ -109,6 +109,14 @@ https://api.skillmd.com/mcp
 
 No auth required. It exposes `skillmd_search`, `skillmd_get`, `skillmd_download`, `skillmd_trending`, and `skillmd_recommend` (`skillmd_download` returns file contents for the client to write, instead of writing to disk).
 
+## Find skills on skillmd.com
+
+The registry behind these tools is [skillmd.com](https://skillmd.com): 25,000+ Agent Skills, each linted, security-scanned and content-pinned.
+
+- [Search all skills](https://skillmd.com/search) · [browse by category](https://skillmd.com/categories) · [by publisher](https://skillmd.com/publishers)
+- Install guides per agent: [Claude Code](https://skillmd.com/agents/claude-code) · [Cursor](https://skillmd.com/agents/cursor) · [Codex](https://skillmd.com/agents/codex) · [all 60+ agents](https://skillmd.com/agents)
+- [The SKILL.md format](https://skillmd.com/docs/format) · [CLI docs](https://skillmd.com/docs/cli) · [MCP docs](https://skillmd.com/docs/mcp) · [registry stats](https://skillmd.com/stats)
+
 ## Configuration
 
 Resolution order, highest first:
