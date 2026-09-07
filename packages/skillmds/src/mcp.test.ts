@@ -75,4 +75,23 @@ describe("MCP stdio server", () => {
     const content = res.content as Array<{ type: string; text: string }>;
     expect(content[0]!.text).toContain("SKILLMD_TOKEN");
   });
+
+  it("gives every tool a title, annotations, an output schema and described parameters", async () => {
+    const res = await client.listTools();
+    for (const t of res.tools) {
+      expect(t.title, t.name).toBeTruthy();
+      expect(t.annotations, t.name).toBeTruthy();
+      expect(t.outputSchema, t.name).toBeTruthy();
+      const props = ((t.inputSchema as any).properties ?? {}) as Record<string, { description?: string }>;
+      for (const [k, v] of Object.entries(props)) expect(v.description, `${t.name}.${k}`).toBeTruthy();
+    }
+  });
+
+  it("returns structuredContent matching the lint output schema", async () => {
+    const res = (await client.callTool({ name: "skillmd_lint", arguments: { content: VALID_SKILL } })) as any;
+    expect(res.structuredContent).toBeTruthy();
+    expect(typeof res.structuredContent.ok).toBe("boolean");
+    expect(typeof res.structuredContent.score).toBe("number");
+    expect(Array.isArray(res.structuredContent.diagnostics)).toBe(true);
+  }, 15_000);
 });

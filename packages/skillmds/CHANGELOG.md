@@ -2,6 +2,12 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.1.2
+
+- **MCP tool metadata.** Every tool now declares a `title`, `annotations` (all read-only except `skillmd_install`, none destructive), an `outputSchema`, and a description on every parameter; list-returning tools respond with `structuredContent: { items }`, `skillmd_lint` and `skillmd_install` return structured results, and refusals are flagged `isError`.
+- **Server metadata.** `initialize` reports a title, description, website URL, icons and usage instructions.
+- No behavior changes to what the tools do.
+
 ## 1.1.1
 
 - Releases are now published through npm Trusted Publishing (OIDC from GitHub Actions) with provenance; no long-lived npm tokens exist for this package.
