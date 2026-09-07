@@ -2,6 +2,12 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.1.1
+
+- Releases are now published through npm Trusted Publishing (OIDC from GitHub Actions) with provenance; no long-lived npm tokens exist for this package.
+- README: links to the registry's browse surfaces (search, categories, publishers, per-agent install guides, docs, stats) so the npm page points at where the skills live.
+- No CLI or MCP behavior changes.
+
 ## 1.1.0
 
 - **Open source.** `skillmds` now develops in the open at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd), and a MIT `LICENSE` file ships in the package (the manifest always claimed MIT; now the text does too).
