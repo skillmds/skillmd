@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/npm/skillmds/assets/skillmd-banner.jpg" alt="SkillMD" width="560">
+  <img src="https://skillmd.com/brand/banner.png" alt="SkillMD" width="560">
 </p>
 
 # skillmds
