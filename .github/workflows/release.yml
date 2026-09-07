@@ -22,7 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org"
       # npm Trusted Publishing (OIDC) needs npm >= 11.5.1; node 22 bundles npm 10.
       - run: npm install -g npm@latest
       - id: meta
@@ -54,11 +53,9 @@ jobs:
           RANGE=$(node -p "require('./packages/skillmds/package.json').dependencies['@skillmds/core']")
           npm view "@skillmds/core@$RANGE" version
       - name: Publish to npm (provenance)
+        # Authenticates via npm Trusted Publishing (OIDC, id-token: write above);
+        # both packages trust skillmds/skillmd + release.yml. No npm token needed.
         run: npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
-        env:
-          # Delete this env line (and the NPM_TOKEN secret) once npm Trusted
-          # Publishing is configured for both packages — OIDC then takes over.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub Release with CHANGELOG notes
         env:
           GH_TOKEN: ${{ github.token }}
