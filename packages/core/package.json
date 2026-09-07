@@ -1,5 +1,5 @@
 {
-  "name": "@skillmd/core",
+  "name": "@skillmds/core",
   "version": "1.0.0",
   "description": "SKILL.md parser, lint rules, security scanner, quality score, and text/JSON/SARIF/GitHub report formatters for Agent Skills.",
   "license": "MIT",

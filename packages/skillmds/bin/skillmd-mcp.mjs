@@ -24,14 +24,14 @@ const VERSION = (() => {
     return "0.0.0";
   }
 })();
-// Shared validation engine + registry helpers from @skillmd/core (a runtime
+// Shared validation engine + registry helpers from @skillmds/core (a runtime
 // dependency of this package). Falls back gracefully when running from an
 // unbuilt source checkout.
 let lint = null;
 let skillMdFor = null;
 let isAllowedSourceUrl = () => false;
 try {
-  ({ lint, skillMdFor, isAllowedSourceUrl } = await import("@skillmd/core"));
+  ({ lint, skillMdFor, isAllowedSourceUrl } = await import("@skillmds/core"));
 } catch {
   /* skillmd_lint / skillmd_install will report that the engine is unavailable */
 }

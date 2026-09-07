@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pc from "picocolors";
-import { lint } from "@skillmd/core";
+import { lint } from "@skillmds/core";
 import { createClient, skillMdFor } from "../api.js";
 import type { RegistrySkill } from "../api.js";
 import { installedSkills } from "../agents.js";

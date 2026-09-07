@@ -1,6 +1,6 @@
 # Lint rules & scoring
 
-`skillmd lint` (and the registry, and the `skillmd_lint` MCP tool) run the same rule set from [`@skillmd/core`](../packages/core). Errors make a skill invalid (`ok: false`, non-zero exit); warnings advise.
+`skillmd lint` (and the registry, and the `skillmd_lint` MCP tool) run the same rule set from [`@skillmds/core`](../packages/core). Errors make a skill invalid (`ok: false`, non-zero exit); warnings advise.
 
 ## Rules
 

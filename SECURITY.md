@@ -8,7 +8,7 @@ You'll get an acknowledgment within a few days. We ask for a reasonable disclosu
 
 ## Scope
 
-- The npm packages `skillmds` and `@skillmd/core` (this repository)
+- The npm packages `skillmds` and `@skillmds/core` (this repository)
 - The `skillmds/skillmd/action` GitHub Action
 - The SkillMD registry and API at `skillmd.com` / `api.skillmd.com`
 

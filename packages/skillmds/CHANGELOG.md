@@ -5,7 +5,7 @@ All notable changes to `skillmds` are documented here. Versions follow [semver](
 ## 1.1.0
 
 - **Open source.** `skillmds` now develops in the open at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd), and a MIT `LICENSE` file ships in the package (the manifest always claimed MIT; now the text does too).
-- **The validation engine is its own package.** The lint/security/quality engine is published as [`@skillmd/core`](https://www.npmjs.com/package/@skillmd/core) and consumed as a regular dependency. The bundled `vendor/` copy is gone — anything that deep-imported `skillmds/vendor/index.js` (an undocumented internal) should import `@skillmd/core` instead.
+- **The validation engine is its own package.** The lint/security/quality engine is published as [`@skillmds/core`](https://www.npmjs.com/package/@skillmds/core) and consumed as a regular dependency. The bundled `vendor/` copy is gone — anything that deep-imported `skillmds/vendor/index.js` (an undocumented internal) should import `@skillmds/core` instead.
 - MCP setup snippets standardize on the server alias `skillmd` (`claude mcp add skillmd -- npx -y skillmds`). Existing configs with other aliases keep working — the alias is client-side.
 - README correction: registry installs have not been gated on verification since 1.0.16.
 - No CLI or MCP behavior changes.

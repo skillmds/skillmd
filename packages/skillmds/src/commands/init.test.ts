@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initSkill } from "./init.js";
-import { lint } from "@skillmd/core";
+import { lint } from "@skillmds/core";
 
 const tmps: string[] = [];
 function tmp(): string { const d = mkdtempSync(join(tmpdir(), "skillmd-init-")); tmps.push(d); return d; }

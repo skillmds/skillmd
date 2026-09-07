@@ -1,12 +1,12 @@
 name: Bug report
-description: Something in the CLI, the MCP server, or @skillmd/core misbehaves
+description: Something in the CLI, the MCP server, or @skillmds/core misbehaves
 labels: [bug]
 body:
   - type: input
     id: version
     attributes:
       label: Version
-      description: Output of `skillmd --version` (or the @skillmd/core version)
+      description: Output of `skillmd --version` (or the @skillmds/core version)
       placeholder: "1.1.0"
     validations:
       required: true
@@ -18,7 +18,7 @@ body:
         - skillmd CLI
         - skillmds MCP server (stdio)
         - Remote MCP server (api.skillmd.com/mcp)
-        - "@skillmd/core (library)"
+        - "@skillmds/core (library)"
         - GitHub Action
     validations:
       required: true

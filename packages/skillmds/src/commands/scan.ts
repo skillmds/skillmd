@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { scanSecurity, parseSkillMd } from "@skillmd/core";
-import type { SecurityResult } from "@skillmd/core";
+import { scanSecurity, parseSkillMd } from "@skillmds/core";
+import type { SecurityResult } from "@skillmds/core";
 import { resolveSource } from "../source.js";
 import pc from "picocolors";
 

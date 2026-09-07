@@ -8,7 +8,7 @@ import type { SearchItem } from "./search.js";
 import { runAdd } from "./add.js";
 import { initSkill } from "./init.js";
 import { installedSkills } from "../agents.js";
-import { parseSkillMd } from "@skillmd/core";
+import { parseSkillMd } from "@skillmds/core";
 
 function bail(v: unknown): v is symbol {
   if (p.isCancel(v)) {

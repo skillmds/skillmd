@@ -13,7 +13,7 @@ Tools for working with [Agent Skills](https://docs.claude.com/en/docs/agents-and
 - **`skillmd`** — a CLI to lint, scan, search, install, and publish skills.
 - **`skillmds`** — an MCP server exposing the registry to MCP clients (Claude Code, Claude Desktop, Cursor, …).
 
-Both validate `SKILL.md` with the same engine ([`@skillmd/core`](https://www.npmjs.com/package/@skillmd/core)), so the CLI and the registry apply identical rules. Source lives at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd).
+Both validate `SKILL.md` with the same engine ([`@skillmds/core`](https://www.npmjs.com/package/@skillmds/core)), so the CLI and the registry apply identical rules. Source lives at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd).
 
 ## Install
 

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import pc from "picocolors";
-import { lint, toText } from "@skillmd/core";
-import type { LintResult } from "@skillmd/core";
+import { lint, toText } from "@skillmds/core";
+import type { LintResult } from "@skillmds/core";
 import { resolveSource } from "../source.js";
 import { createClient } from "../api.js";
 import { decorate } from "../ui.js";

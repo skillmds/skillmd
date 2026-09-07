@@ -1,7 +1,7 @@
 // End-to-end smoke test for the stdio MCP server: spawns the real bin the way
 // an MCP client does (no argv, piped stdin — exercising the CLI/server dispatch)
-// and drives it over the official SDK client. Requires @skillmd/core to be
-// built (`npm run build -w @skillmd/core`); the root `test` script does that.
+// and drives it over the official SDK client. Requires @skillmds/core to be
+// built (`npm run build -w @skillmds/core`); the root `test` script does that.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,7 @@ describe("MCP stdio server", () => {
     );
   });
 
-  it("lints raw SKILL.md content through @skillmd/core", async () => {
+  it("lints raw SKILL.md content through @skillmds/core", async () => {
     const res = await client.callTool({ name: "skillmd_lint", arguments: { content: VALID_SKILL } });
     const content = res.content as Array<{ type: string; text: string }>;
     const payload = JSON.parse(content[0]!.text) as { ok: boolean; score: number };

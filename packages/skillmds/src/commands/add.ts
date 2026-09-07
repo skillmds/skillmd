@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import pc from "picocolors";
-import { lint } from "@skillmd/core";
+import { lint } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
 import type { RegistrySkill } from "../api.js";
 import { resolveSource, resolveTree } from "../source.js";

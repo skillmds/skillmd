@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { slugify } from "@skillmd/core";
+import { slugify } from "@skillmds/core";
 import * as p from "@clack/prompts";
 
 export function skillTemplate(name: string, description: string, license: string): string {

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { RULES } from "@skillmd/core";
+import { RULES } from "@skillmds/core";
 import pc from "picocolors";
 
 export function rulesCommand(): Command {

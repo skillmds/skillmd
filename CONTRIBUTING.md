@@ -10,7 +10,7 @@ Node **≥ 18** runs the published packages; Node **≥ 20** is recommended for 
 git clone https://github.com/skillmds/skillmd.git
 cd skillmd
 npm ci
-npm run build        # builds @skillmd/core, then skillmds
+npm run build        # builds @skillmds/core, then skillmds
 npm test             # vitest across both packages (builds core first — the MCP smoke test spawns the real bin)
 npm run typecheck    # strict tsc across both packages
 npm run lint:skills  # dogfood: lint the example skill with the local build
@@ -20,7 +20,7 @@ npm run lint:skills  # dogfood: lint the example skill with the local build
 
 | Path | What it is |
 |---|---|
-| `packages/core` | `@skillmd/core` — SKILL.md parser, lint rules, security scanner, quality score, formatters. |
+| `packages/core` | `@skillmds/core` — SKILL.md parser, lint rules, security scanner, quality score, formatters. |
 | `packages/skillmds` | `skillmds` — the `skillmd` CLI (`src/`, bundled to `dist/cli.js`) and the `skillmds` MCP server (`bin/skillmd-mcp.mjs`, plain readable ESM). |
 | `action/` | The `skillmds/skillmd/action@v1` composite GitHub Action (SARIF lint for CI). |
 | `docs/` | CLI, MCP, lint-rule, and registry API references. |
@@ -34,7 +34,7 @@ Two things worth knowing before you change code:
 ## Pull requests
 
 - Add or update tests for what you change. `npm test` and `npm run typecheck` must pass.
-- Keep the packages' public API surfaces deliberate — `@skillmd/core` exports are a compatibility contract.
+- Keep the packages' public API surfaces deliberate — `@skillmds/core` exports are a compatibility contract.
 - Match the surrounding code style (no lint tooling is configured; the codebase is small and consistent — read a file before editing it).
 - One logical change per PR.
 
@@ -45,9 +45,9 @@ Releases are tag-driven; CI publishes to npm with provenance.
 1. Bump the package's `version` in its `package.json` and add a dated section to its `CHANGELOG.md`.
 2. For `skillmds` releases, bump `version` in the root `server.json` too (MCP registry manifest).
 3. Commit, then tag and push:
-   - `@skillmd/core` → `git tag core-vX.Y.Z && git push origin core-vX.Y.Z`
+   - `@skillmds/core` → `git tag core-vX.Y.Z && git push origin core-vX.Y.Z`
    - `skillmds` → `git tag vX.Y.Z && git push origin vX.Y.Z`
-   - Publishing order matters when both change: core first — the `skillmds` release job refuses to publish until its `@skillmd/core` range resolves on npm.
+   - Publishing order matters when both change: core first — the `skillmds` release job refuses to publish until its `@skillmds/core` range resolves on npm.
 4. CI publishes the package and creates a GitHub Release with the matching CHANGELOG section.
 5. If the GitHub Action changed, move the floating tag: `git tag -f v1 && git push -f origin v1` (the release workflow only matches three-part tags, so `v1` never triggers it).
 6. Re-publish the MCP registry entry when `server.json` changed: `mcp-publisher publish` (requires the `com.skillmd` domain verification).

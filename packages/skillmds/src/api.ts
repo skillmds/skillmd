@@ -1,13 +1,13 @@
 // Registry client. Mirrors the api() helper in bin/skillmd-mcp.mjs, injecting
 // the resolved base URL + bearer token.
 import { createHash } from "node:crypto";
-import { isAllowedSourceUrl } from "@skillmd/core";
+import { isAllowedSourceUrl } from "@skillmds/core";
 import { resolveApi, resolveToken } from "./config.js";
 import type { GlobalFlags } from "./config.js";
 
 // SKILL.md materialization + the companion-file SSRF guard live in
-// @skillmd/core so the CLI and the MCP server share one implementation.
-export { isAllowedSourceUrl, reconstructSkillMd, skillMdFor } from "@skillmd/core";
+// @skillmds/core so the CLI and the MCP server share one implementation.
+export { isAllowedSourceUrl, reconstructSkillMd, skillMdFor } from "@skillmds/core";
 
 /** Thrown when a downloaded file's bytes don't match the registry's recorded
  *  sha256. Tagged so the installer can hard-block instead of silently falling

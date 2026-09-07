@@ -57,7 +57,7 @@
   "dependencies": {
     "@clack/prompts": "^0.8.0",
     "@modelcontextprotocol/sdk": "^1.13.0",
-    "@skillmd/core": "^1.0.0",
+    "@skillmds/core": "^1.0.0",
     "commander": "^12.1.0",
     "giget": "^3.3.0",
     "picocolors": "^1.1.0",

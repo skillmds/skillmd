@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/skillmds"><img src="https://img.shields.io/npm/v/skillmds.svg?label=skillmds" alt="skillmds on npm"></a>
-  <a href="https://www.npmjs.com/package/@skillmd/core"><img src="https://img.shields.io/npm/v/%40skillmd%2Fcore.svg?label=%40skillmd%2Fcore" alt="@skillmd/core on npm"></a>
+  <a href="https://www.npmjs.com/package/@skillmds/core"><img src="https://img.shields.io/npm/v/%40skillmds%2Fcore.svg?label=%40skillmds%2Fcore" alt="@skillmds/core on npm"></a>
   <a href="https://www.npmjs.com/package/skillmds"><img src="https://img.shields.io/npm/dm/skillmds.svg" alt="npm downloads"></a>
   <a href="https://github.com/skillmds/skillmd/actions/workflows/ci.yml"><img src="https://github.com/skillmds/skillmd/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license"></a>
@@ -41,7 +41,7 @@ This repository is everything that runs on your machine or in your CI, MIT-licen
 | Package | What it is | Install |
 |---|---|---|
 | [`skillmds`](packages/skillmds) | One npm package, two binaries: the **`skillmd` CLI** and the **`skillmds` MCP server** | `npm i -g skillmds` |
-| [`@skillmd/core`](packages/core) | The SKILL.md engine: parser, lint rules, security scanner, quality score, SARIF / JSON / GitHub formatters | `npm i @skillmd/core` |
+| [`@skillmds/core`](packages/core) | The SKILL.md engine: parser, lint rules, security scanner, quality score, SARIF / JSON / GitHub formatters | `npm i @skillmds/core` |
 | [`skillmds/skillmd/action`](action) | GitHub Action: lint every skill in a repo, results in GitHub Code Scanning | `uses: skillmds/skillmd/action@v1` |
 
 The registry applies the same engine, so a skill that passes locally passes on publish.
@@ -118,14 +118,14 @@ https://api.skillmd.com/mcp
 
 Full reference: [docs/mcp.md](docs/mcp.md) · [MCP docs on skillmd.com](https://skillmd.com/docs/mcp) · [Using SkillMD over MCP](https://skillmd.com/blog/using-skillmd-over-mcp) · MCP registry entry: `com.skillmd/skillmd`
 
-## The engine: `@skillmd/core`
+## The engine: `@skillmds/core`
 
 ```bash
-npm i @skillmd/core
+npm i @skillmds/core
 ```
 
 ```ts
-import { lint } from "@skillmd/core";
+import { lint } from "@skillmds/core";
 
 const { ok, score, diagnostics, security } = lint(rawSkillMd, { slug: "my-skill" });
 ```
@@ -199,7 +199,7 @@ Details in [SECURITY.md](SECURITY.md). Report vulnerabilities to **hi@skillmd.co
 
 ```bash
 npm ci
-npm run build      # @skillmd/core, then skillmds
+npm run build      # @skillmds/core, then skillmds
 npm test           # vitest across both packages, incl. an MCP stdio smoke test
 npm run typecheck  # strict tsc
 ```

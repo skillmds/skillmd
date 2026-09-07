@@ -1,7 +1,7 @@
 name: release
 
 # Tag-driven npm publishing with provenance:
-#   core-vX.Y.Z  -> @skillmd/core
+#   core-vX.Y.Z  -> @skillmds/core
 #   vX.Y.Z       -> skillmds
 # The floating `v1` tag (GitHub Action pointer) never matches these globs.
 on:
@@ -30,7 +30,7 @@ jobs:
         run: |
           TAG="$GITHUB_REF_NAME"
           if [[ "$TAG" == core-v* ]]; then
-            echo "pkg=@skillmd/core" >> "$GITHUB_OUTPUT"
+            echo "pkg=@skillmds/core" >> "$GITHUB_OUTPUT"
             echo "dir=packages/core" >> "$GITHUB_OUTPUT"
             echo "version=${TAG#core-v}" >> "$GITHUB_OUTPUT"
           else
@@ -48,11 +48,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - name: skillmds only — @skillmd/core dep must resolve on the public registry
+      - name: skillmds only — @skillmds/core dep must resolve on the public registry
         if: steps.meta.outputs.pkg == 'skillmds'
         run: |
-          RANGE=$(node -p "require('./packages/skillmds/package.json').dependencies['@skillmd/core']")
-          npm view "@skillmd/core@$RANGE" version
+          RANGE=$(node -p "require('./packages/skillmds/package.json').dependencies['@skillmds/core']")
+          npm view "@skillmds/core@$RANGE" version
       - name: Publish to npm (provenance)
         run: npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
         env:

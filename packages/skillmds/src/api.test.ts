@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { parseSkillMd } from "@skillmd/core";
+import { parseSkillMd } from "@skillmds/core";
 import { createClient, reconstructSkillMd, skillMdFor, fetchBundle, IntegrityError, RegistryError, isAllowedSourceUrl } from "./api.js";
 
 const sha = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");

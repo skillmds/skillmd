@@ -3,7 +3,7 @@
   "compilerOptions": {
     "types": ["node"],
     "paths": {
-      "@skillmd/core": ["../core/src/index.ts"]
+      "@skillmds/core": ["../core/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"]

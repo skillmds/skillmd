@@ -1,4 +1,4 @@
-// Public surface of @skillmd/core — the shared parser, linter, security scanner,
+// Public surface of @skillmds/core — the shared parser, linter, security scanner,
 // quality score, and report formatters used by the SkillMD registry, the
 // `skillmd` CLI, and the `skillmds` MCP server.
 export { parseSkillMd, slugify, categorize, MAX_SKILL_BYTES, MAX_DESCRIPTION, MAX_NAME } from "./parse.js";

@@ -1,6 +1,6 @@
 // Shared terminal decoration, rendering, and exit-code policy for quality commands.
 import pc from "picocolors";
-import type { LintResult, Severity } from "@skillmd/core";
+import type { LintResult, Severity } from "@skillmds/core";
 
 export const decorate = (text: string, kind: Severity | "ok" | "dim"): string => {
   switch (kind) {

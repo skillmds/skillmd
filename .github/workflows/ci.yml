@@ -33,7 +33,7 @@ jobs:
       - name: Pack sanity (files arrays resolve, no vendor/)
         shell: bash
         run: |
-          npm pack --dry-run -w @skillmd/core -w skillmds --json > packs.json
+          npm pack --dry-run -w @skillmds/core -w skillmds --json > packs.json
           node -e "
             const packs = require('./packs.json');
             const files = packs.flatMap(t => t.files.map(f => f.path));

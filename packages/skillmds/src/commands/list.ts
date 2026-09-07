@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import pc from "picocolors";
-import { parseSkillMd } from "@skillmd/core";
+import { parseSkillMd } from "@skillmds/core";
 import { installedSkills } from "../agents.js";
 import type { ScopeOptions } from "../agents.js";
 

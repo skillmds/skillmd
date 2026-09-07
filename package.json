@@ -2,7 +2,7 @@
   "name": "skillmd",
   "version": "0.0.0",
   "private": true,
-  "description": "The SkillMD toolchain: SKILL.md lint engine (@skillmd/core), the skillmd CLI, and the skillmds MCP server.",
+  "description": "The SkillMD toolchain: SKILL.md lint engine (@skillmds/core), the skillmd CLI, and the skillmds MCP server.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -11,9 +11,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "npm run build -w @skillmd/core && npm run build -w skillmds",
+    "build": "npm run build -w @skillmds/core && npm run build -w skillmds",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run build -w @skillmd/core && npm test --workspaces --if-present",
+    "test": "npm run build -w @skillmds/core && npm test --workspaces --if-present",
     "lint:skills": "node packages/skillmds/bin/skillmd.mjs lint examples/skills"
   },
   "repository": {
