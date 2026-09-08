@@ -25,6 +25,6 @@
     "url": "https://github.com/skillmds/skillmd/issues"
   },
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^7.0.2"
   }
 }
