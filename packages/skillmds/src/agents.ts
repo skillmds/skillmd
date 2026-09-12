@@ -12,7 +12,7 @@
 // visible to list/update/remove.
 import { mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, dirname, sep } from "node:path";
+import { join, resolve, isAbsolute, dirname, sep } from "node:path";
 
 export interface Agent {
   id: string;
@@ -29,7 +29,7 @@ export interface Agent {
 }
 
 /** Cross-agent canonical location; every install writes here once. */
-export const CANONICAL = [".agents", "skills"];
+export const CANONICAL = [".agents", "skills"] as const;
 
 // Known agents and their skills directories. Detection only fires for dirs that
 // exist, so a long list costs nothing at runtime.
@@ -51,7 +51,7 @@ export const AGENTS: Agent[] = [
   { id: "qwen-code", project: [".qwen", "skills"], global: [".qwen", "skills"], detect: [[".qwen"]], projectRoots: [".qwen"] },
   { id: "amp", project: [".agents", "skills"], global: [".config", "agents", "skills"], detect: [[".config", "amp"]], projectRoots: [".agents"] },
   // — extended registry —
-  { id: "openclaw", project: ["skills"], global: [".openclaw", "skills"], detect: [[".openclaw"], [".clawdbot"], [".moltbot"]], projectRoots: ["skills"] },
+  { id: "openclaw", project: ["skills"], global: [".openclaw", "skills"], detect: [[".openclaw"], [".clawdbot"], [".moltbot"]], projectRoots: [".openclaw"] },
   { id: "kilo", project: [".claude", "skills"], global: [".kilocode", "skills"], detect: [[".kilocode"]], projectRoots: [".claude", ".kilocode"] },
   { id: "hermes-agent", project: [".hermes", "skills"], global: [".hermes", "skills"], detect: [[".hermes"]], projectRoots: [".hermes"] },
   { id: "continue", project: [".continue", "skills"], global: [".continue", "skills"], detect: [[".continue"]], projectRoots: [".continue"] },
@@ -138,13 +138,22 @@ export function agentDir(agentId: string, opts: ScopeOptions = {}): string {
   if (agent.global === null) throw new Error(`${agent.id} does not support global installs (project-only agent)`);
   const env = opts.env ?? process.env;
   const override = agent.globalEnv ? env[agent.globalEnv] : undefined;
-  if (override) return join(override, ...agent.global.slice(1));
+  // A relative CLAUDE_CONFIG_DIR/CODEX_HOME is relative to the cwd, not to $HOME.
+  if (override) return join(isAbsolute(override) ? override : resolve(override), ...agent.global.slice(1));
   return join(opts.home ?? homedir(), ...agent.global);
 }
 
 /** Is this agent already present in the project (so writing its dir is not litter)? */
 export function agentRootExists(agentId: string, cwd: string): boolean {
-  return agentById(agentId).projectRoots.some((r) => existsSync(join(cwd, r)));
+  return agentById(agentId).projectRoots.some((r) => isDir(join(cwd, r)));
+}
+
+function isDir(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** Detect which known agents are installed on this machine (their root config
@@ -152,7 +161,14 @@ export function agentRootExists(agentId: string, cwd: string): boolean {
  *  machine-level fact; where the skill lands is decided by agentDir(). */
 export function detectAgents(opts: ScopeOptions = {}): string[] {
   const home = opts.home ?? homedir();
-  return AGENTS.filter((a) => a.detect.some((d) => existsSync(join(home, ...d)))).map((a) => a.id);
+  const env = opts.env ?? process.env;
+  return AGENTS.filter((a) => {
+    if (a.detect.some((d) => isDir(join(home, ...d)))) return true;
+    // A relocated config dir (CLAUDE_CONFIG_DIR, CODEX_HOME) means the agent is
+    // installed even though nothing of it sits under $HOME.
+    const override = a.globalEnv ? env[a.globalEnv] : undefined;
+    return !!override && isDir(isAbsolute(override) ? override : resolve(override));
+  }).map((a) => a.id);
 }
 
 export interface SkillFileInput {

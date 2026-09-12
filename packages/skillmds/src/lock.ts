@@ -40,7 +40,11 @@ export function readLock(scope: LockScope, opts: { warn?: (msg: string) => void 
   if (!existsSync(file)) return EMPTY();
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<LockFile>;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.skills !== "object" || parsed.skills === null) throw new Error("unexpected shape");
+    if (!parsed || typeof parsed !== "object") throw new Error("unexpected shape");
+    // A newer version was written by a newer CLI: we cannot read it, and we must
+    // not quietly overwrite it — treat it exactly like a corrupt file (warn, back up).
+    if (parsed.version !== 1) throw new Error(`unsupported lock version ${String(parsed.version)}`);
+    if (typeof parsed.skills !== "object" || parsed.skills === null || Array.isArray(parsed.skills)) throw new Error("unexpected shape");
     return { version: 1, skills: parsed.skills as Record<string, LockEntry> };
   } catch (e) {
     corruptSeen.add(file);
@@ -69,24 +73,33 @@ export function writeLock(scope: LockScope, lock: LockFile): void {
   const tmp = `${file}.tmp-${process.pid}`;
   writeFileSync(tmp, `${JSON.stringify({ version: 1, skills }, null, 2)}\n`, "utf8");
   try {
-    renameSync(tmp, file);
-  } catch {
-    // Windows can refuse a rename over an existing file (EPERM) when it is held open.
-    rmSync(file, { force: true });
-    renameSync(tmp, file);
+    try {
+      renameSync(tmp, file);
+    } catch {
+      // Windows can refuse a rename over an existing file (EPERM). Unlinking first
+      // only helps when nothing holds the target open — if it does, both throw.
+      rmSync(file, { force: true });
+      renameSync(tmp, file);
+    }
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
   }
 }
 
-export function upsertEntry(scope: LockScope, name: string, entry: LockEntry): void {
-  const lock = readLock(scope);
+/** Default for the write paths: a corrupt lock must never be replaced silently. */
+const defaultWarnOpts = (): { warn?: (msg: string) => void } => ({ warn: (m) => console.warn(m) });
+
+export function upsertEntry(scope: LockScope, name: string, entry: LockEntry, opts: { warn?: (msg: string) => void } = defaultWarnOpts()): void {
+  const lock = readLock(scope, opts);
   const prev = lock.skills[name];
   const now = new Date().toISOString();
-  lock.skills[name] = { ...entry, installedAt: entry.installedAt ?? prev?.installedAt ?? now, updatedAt: prev ? now : (entry.updatedAt ?? now) };
+  lock.skills[name] = { ...entry, installedAt: prev?.installedAt ?? entry.installedAt ?? now, updatedAt: prev ? now : (entry.updatedAt ?? now) };
   writeLock(scope, lock);
 }
 
-export function removeEntry(scope: LockScope, name: string): boolean {
-  const lock = readLock(scope);
+export function removeEntry(scope: LockScope, name: string, opts: { warn?: (msg: string) => void } = defaultWarnOpts()): boolean {
+  const lock = readLock(scope, opts);
   if (!(name in lock.skills)) return false;
   delete lock.skills[name];
   writeLock(scope, lock);

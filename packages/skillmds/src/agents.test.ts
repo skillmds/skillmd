@@ -125,3 +125,29 @@ describe("1.2 agent table", () => {
     for (const a of AGENTS) { expect(a.project.length).toBeGreaterThan(0); expect(a.detect.length).toBeGreaterThan(0); expect(a.projectRoots.length).toBeGreaterThan(0); }
   });
 });
+
+describe("presence markers and env-dir detection", () => {
+  it("openclaw is marked present by .openclaw, not by a bare skills/ dir", () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, "skills"));
+    expect(agentRootExists("openclaw", cwd)).toBe(false);
+    const cwd2 = tmp();
+    mkdirSync(join(cwd2, ".openclaw"));
+    expect(agentRootExists("openclaw", cwd2)).toBe(true);
+    expect(agentDir("openclaw", { cwd: "/p" })).toBe(join("/p", "skills"));
+  });
+
+  it("a file (not a directory) named like a project root does not mark the agent present", () => {
+    const cwd = tmp();
+    writeFileSync(join(cwd, ".cursor"), "not a dir");
+    expect(agentRootExists("cursor", cwd)).toBe(false);
+  });
+
+  it("detectAgents honours a config-dir env var pointing at an existing dir", () => {
+    const home = tmp();
+    const cfg = tmp();
+    expect(detectAgents({ home, env: {} })).toEqual([]);
+    expect(detectAgents({ home, env: { CLAUDE_CONFIG_DIR: cfg } })).toEqual(["claude-code"]);
+    expect(detectAgents({ home, env: { CLAUDE_CONFIG_DIR: join(cfg, "nope") } })).toEqual([]);
+  });
+});

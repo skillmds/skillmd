@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLock, writeLock, upsertEntry, removeEntry, lockPath } from "./lock.js";
@@ -53,5 +53,64 @@ describe("lock files", () => {
     expect(warnings[0]).toMatch(/could not parse/);
     writeLock({ global: false, cwd }, lock);
     expect(existsSync(join(cwd, "skills-lock.json.bak"))).toBe(true);
+  });
+});
+
+describe("lock files: refusing to silently discard", () => {
+  it("upsertEntry warns before rewriting a corrupt lock, and still writes the entry", () => {
+    const cwd = tmp();
+    const scope = { global: false, cwd };
+    writeFileSync(join(cwd, "skills-lock.json"), "{ not json", "utf8");
+    const warnings: string[] = [];
+    upsertEntry(scope, "x", entry(), { warn: (m) => warnings.push(m) });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/could not parse/);
+    expect(readLock(scope).skills.x?.source).toBe("registry:o/n");
+    expect(existsSync(join(cwd, "skills-lock.json.bak"))).toBe(true);
+  });
+
+  it("removeEntry warns before rewriting a corrupt lock", () => {
+    const cwd = tmp();
+    const scope = { global: false, cwd };
+    writeFileSync(join(cwd, "skills-lock.json"), "{ not json", "utf8");
+    const warnings: string[] = [];
+    expect(removeEntry(scope, "x", { warn: (m) => warnings.push(m) })).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/could not parse/);
+  });
+
+  it("an unknown lock version is treated as unreadable, not as an empty lock", () => {
+    const cwd = tmp();
+    const scope = { global: false, cwd };
+    writeFileSync(join(cwd, "skills-lock.json"), JSON.stringify({ version: 2, skills: { a: entry() } }), "utf8");
+    const warnings: string[] = [];
+    expect(readLock(scope, { warn: (m) => warnings.push(m) }).skills).toEqual({});
+    expect(warnings[0]).toMatch(/unsupported lock version 2/);
+    writeLock(scope, { version: 1, skills: {} });
+    expect(existsSync(join(cwd, "skills-lock.json.bak"))).toBe(true);
+  });
+
+  it("a skills array is rejected rather than read as a record", () => {
+    const cwd = tmp();
+    const scope = { global: false, cwd };
+    writeFileSync(join(cwd, "skills-lock.json"), JSON.stringify({ version: 1, skills: [] }), "utf8");
+    const warnings: string[] = [];
+    expect(readLock(scope, { warn: (m) => warnings.push(m) }).skills).toEqual({});
+    expect(warnings[0]).toMatch(/could not parse/);
+  });
+
+  it("a failed rename leaves no temp file behind", () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, "skills-lock.json"));
+    expect(() => writeLock({ global: false, cwd }, { version: 1, skills: { x: entry() } })).toThrow();
+    expect(readdirSync(cwd).filter((f) => f.startsWith("skills-lock.json.tmp-"))).toEqual([]);
+  });
+
+  it("upsertEntry keeps the original install date across re-installs", () => {
+    const home = tmp();
+    const scope = { global: true, home };
+    upsertEntry(scope, "x", entry({ installedAt: "2026-01-01T00:00:00Z" }));
+    upsertEntry(scope, "x", entry({ installedAt: "2026-06-06T00:00:00Z" }));
+    expect(readLock(scope).skills.x?.installedAt).toBe("2026-01-01T00:00:00Z");
   });
 });
