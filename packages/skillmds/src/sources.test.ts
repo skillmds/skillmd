@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseSource, gigetInput } from "./sources.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { parseSource, gigetInput, sourceId } from "./sources.js";
 
 const cases: Array<[string, ReturnType<typeof parseSource>]> = [
   ["./my-skill", { kind: "local", path: "./my-skill", display: "./my-skill" }],
   ["C:\\skills\\x", { kind: "local", path: "C:\\skills\\x", display: "C:\\skills\\x" }],
   ["anthropic/pdf", { kind: "slug", owner: "anthropic", name: "pdf", display: "anthropic/pdf" }],
+  ["o/r.git", { kind: "slug", owner: "o", name: "r", display: "o/r.git" }],
   ["owner/repo#dev", { kind: "github", owner: "owner", repo: "repo", ref: "dev", display: "owner/repo#dev" }],
   ["owner/repo/skills/x", { kind: "github", owner: "owner", repo: "repo", subpath: "skills/x", display: "owner/repo/skills/x" }],
   ["owner/repo@my-skill", { kind: "github", owner: "owner", repo: "repo", skill: "my-skill", display: "owner/repo@my-skill" }],
@@ -12,6 +15,7 @@ const cases: Array<[string, ReturnType<typeof parseSource>]> = [
   ["github:o/r", { kind: "github", owner: "o", repo: "r", display: "github:o/r" }],
   ["gh:o/r/sub", { kind: "github", owner: "o", repo: "r", subpath: "sub", display: "gh:o/r/sub" }],
   ["https://github.com/o/r", { kind: "github", owner: "o", repo: "r", display: "https://github.com/o/r" }],
+  ["https://GitHub.com/o/r", { kind: "github", owner: "o", repo: "r", display: "https://GitHub.com/o/r" }],
   ["https://github.com/o/r.git", { kind: "github", owner: "o", repo: "r", display: "https://github.com/o/r.git" }],
   ["https://github.com/o/r/tree/dev/skills/x", { kind: "github", owner: "o", repo: "r", ref: "dev", subpath: "skills/x", display: "https://github.com/o/r/tree/dev/skills/x" }],
   ["https://github.com/o/r/blob/main/skills/x/SKILL.md", { kind: "github", owner: "o", repo: "r", ref: "main", subpath: "skills/x", display: "https://github.com/o/r/blob/main/skills/x/SKILL.md" }],
@@ -42,6 +46,30 @@ describe("parseSource", () => {
     expect(() => parseSource("", { exists: () => false })).toThrow();
     expect(() => parseSource("just-a-word", { exists: () => false })).toThrow(/owner\/name/);
   });
+  it("rejects a @skill segment containing a slash", () => {
+    expect(() => parseSource("o/r@a/b", { exists: () => false })).toThrow(/not a valid source/);
+  });
+  it("expands a leading ~ to the home directory", () => {
+    const s = parseSource("~/skills/x", { exists: () => false });
+    expect(s.kind).toBe("local");
+    const path = s.kind === "local" ? s.path : "";
+    expect(path.endsWith(join("skills", "x"))).toBe(true);
+    expect(path.startsWith("~")).toBe(false);
+    expect(path).toBe(join(homedir(), "skills", "x"));
+    expect(s.display).toBe("~/skills/x");
+  });
+});
+
+describe("sourceId", () => {
+  const rows: Array<[ReturnType<typeof parseSource>, string]> = [
+    [{ kind: "slug", owner: "o", name: "n", display: "o/n" }, "registry:o/n"],
+    [{ kind: "github", owner: "o", repo: "r", subpath: "sub", ref: "dev", skill: "sk", display: "" }, "github:o/r/sub#dev@sk"],
+    [{ kind: "gist", user: "u", id: "abc", display: "" }, "gist:u/abc"],
+    [{ kind: "local", path: "./x", display: "./x" }, "local:./x"],
+  ];
+  for (const [spec, expected] of rows) {
+    it(`ids ${expected}`, () => { expect(sourceId(spec)).toBe(expected); });
+  }
 });
 
 describe("gigetInput", () => {

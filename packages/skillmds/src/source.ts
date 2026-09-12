@@ -75,12 +75,18 @@ export async function precheckTreeSize(spec: Extract<SourceSpec, { kind: "github
   const prefix = spec.subpath ? `${spec.subpath}/` : "";
   const blobs = data.tree.filter((t) => t.type === "blob" && (!prefix || t.path.startsWith(prefix)));
   const bytes = blobs.reduce((n, t) => n + (t.size ?? 0), 0);
-  if (blobs.length > MAX_PACK_FILES) throw new Error(`pack too large: ${blobs.length} files (limit ${MAX_PACK_FILES}) — point at the skill's own directory`);
-  if (bytes > MAX_PACK_BYTES) throw new Error(`pack too large: ${Math.round(bytes / (1024 * 1024))}MB (limit ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB)`);
+  if (blobs.length > MAX_PACK_FILES) throw new Error(`pack too large: ${blobs.length} files (limit ${MAX_PACK_FILES}) — point at the skill's own directory (pre-download estimate from the GitHub tree API)`);
+  if (bytes > MAX_PACK_BYTES) throw new Error(`pack too large: ${Math.round(bytes / (1024 * 1024))}MB (limit ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB) (pre-download estimate from the GitHub tree API)`);
 }
 
-async function downloadGithub(spec: Extract<SourceSpec, { kind: "github" }>, prefix: string, opts: RemoteOptions): Promise<{ dir: string; cleanup: () => void }> {
-  await precheckTreeSize(spec, opts);
+/** Widen a slug (or pass through a github spec) into the github shape the download path needs. */
+function asGithub(spec: Extract<SourceSpec, { kind: "github" | "slug" }>, ref?: string, display?: string): Extract<SourceSpec, { kind: "github" }> {
+  if (spec.kind === "github") return spec;
+  return { kind: "github", owner: spec.owner, repo: spec.name, ref, display: display ?? spec.display };
+}
+
+async function downloadGithub(spec: Extract<SourceSpec, { kind: "github" }>, prefix: string, opts: RemoteOptions, precheck: boolean): Promise<{ dir: string; cleanup: () => void }> {
+  if (precheck) await precheckTreeSize(spec, opts);
   const { downloadTemplate } = await import("giget");
   const tmp = mkdtempSync(join(tmpdir(), prefix));
   const cleanup = () => rmSync(tmp, { recursive: true, force: true });
@@ -110,12 +116,18 @@ export async function resolveSource(arg: string, opts: RemoteOptions = {}): Prom
     const f = timedFetch(opts.fetch ?? fetch, FETCH_TIMEOUT_MS);
     const res = await f(`https://gist.githubusercontent.com/${spec.user}/${spec.id}/raw/SKILL.md`);
     if (!res.ok) throw new Error(`gist ${spec.id} has no SKILL.md (HTTP ${res.status})`);
-    return [{ path: spec.display, raw: await res.text(), slug: `gist-${spec.id.slice(0, 8)}` }];
+    const tooBig = (n: number): Error =>
+      new Error(`gist ${spec.id} is too large: ${Math.round(n / (1024 * 1024))}MB (limit ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB)`);
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_PACK_BYTES) throw tooBig(declared);
+    const raw = await res.text();
+    if (raw.length > MAX_PACK_BYTES) throw tooBig(raw.length);
+    return [{ path: spec.display, raw, slug: `gist-${spec.id.slice(0, 8)}` }];
   }
-  const gh: Extract<SourceSpec, { kind: "github" }> = spec.kind === "slug"
-    ? { kind: "github", owner: spec.owner, repo: spec.name, display: spec.display }
-    : spec;
-  const { dir, cleanup } = await downloadGithub(gh, "skillmd-src-", opts);
+  const gh = asGithub(spec);
+  // Whole-repo resolves walk the checkout without buffering contents, so only a
+  // subpath fetch (which giget materialises as a pack) needs the size pre-check.
+  const { dir, cleanup } = await downloadGithub(gh, "skillmd-src-", opts, Boolean(gh.subpath));
   try {
     let files = findSkillFiles(dir);
     if (gh.skill) files = files.filter((f) => basename(dirname(f)) === gh.skill);
@@ -170,10 +182,9 @@ export function collectFiles(root: string, dir: string, limits: CollectLimits = 
 export async function resolveTree(sourceUrl: string, ref?: string, opts: RemoteOptions = {}): Promise<TreeFile[]> {
   const spec = parseSource(sourceUrl, { ref });
   if (spec.kind !== "github" && spec.kind !== "slug") throw new Error(`cannot fetch a tree from ${sourceUrl}`);
-  const gh: Extract<SourceSpec, { kind: "github" }> = spec.kind === "slug"
-    ? { kind: "github", owner: spec.owner, repo: spec.name, ref, display: sourceUrl }
-    : spec;
-  const { dir, cleanup } = await downloadGithub(gh, "skillmd-pack-", opts);
+  const gh = asGithub(spec, ref, sourceUrl);
+  // Pack fetches always buffer the whole tree into memory, so they stay capped.
+  const { dir, cleanup } = await downloadGithub(gh, "skillmd-pack-", opts, true);
   try {
     // collectFiles buffers contents in memory, so the temp dir can go right away.
     return collectFiles(dir, dir);
