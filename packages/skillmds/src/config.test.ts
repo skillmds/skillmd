@@ -1,33 +1,34 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { resolveToken, resolveApi, telemetryDisabled, DEFAULT_API } from "./config.js";
 
-describe("resolveToken", () => {
-  const orig = process.env.SKILLMD_TOKEN;
-  beforeEach(() => { delete process.env.SKILLMD_TOKEN; });
-  afterEach(() => { if (orig === undefined) delete process.env.SKILLMD_TOKEN; else process.env.SKILLMD_TOKEN = orig; });
+// Every resolution below passes an explicit ResolveSources. Nothing here may
+// read the developer's real process.env or ~/.skillmd/config.json — a machine
+// with a stored token or a local api base must not change a single result.
 
+describe("resolveToken", () => {
   it("reads from env when no flag", () => {
-    process.env.SKILLMD_TOKEN = "abc";
-    expect(resolveToken({})).toBe("abc");
+    expect(resolveToken({}, { env: { SKILLMD_TOKEN: "abc" }, config: {} })).toBe("abc");
   });
   it("flag overrides env", () => {
-    process.env.SKILLMD_TOKEN = "abc";
-    expect(resolveToken({ token: "flag" })).toBe("flag");
+    expect(resolveToken({ token: "flag" }, { env: { SKILLMD_TOKEN: "abc" }, config: {} })).toBe("flag");
+  });
+  it("is undefined when nothing supplies one", () => {
+    expect(resolveToken({}, { env: {}, config: {} })).toBeUndefined();
   });
 });
 
 describe("resolveApi", () => {
-  const orig = process.env.SKILLMD_API;
-  beforeEach(() => { delete process.env.SKILLMD_API; });
-  afterEach(() => { if (orig === undefined) delete process.env.SKILLMD_API; else process.env.SKILLMD_API = orig; });
-
   it("defaults to the production base", () => {
-    expect(resolveApi({})).toBe(DEFAULT_API);
+    expect(resolveApi({}, { env: {}, config: {} })).toBe(DEFAULT_API);
   });
   it("env overrides default, flag overrides env", () => {
-    process.env.SKILLMD_API = "https://env.example";
-    expect(resolveApi({})).toBe("https://env.example");
-    expect(resolveApi({ api: "https://flag.example" })).toBe("https://flag.example");
+    expect(resolveApi({}, { env: { SKILLMD_API: "https://env.example" }, config: {} })).toBe("https://env.example");
+    expect(resolveApi({ api: "https://flag.example" }, { env: { SKILLMD_API: "https://env.example" }, config: {} })).toBe("https://flag.example");
+  });
+  it("config.api sits below env and above the default", () => {
+    const config = { api: "https://cfg.example" };
+    expect(resolveApi({}, { env: {}, config })).toBe("https://cfg.example");
+    expect(resolveApi({}, { env: { SKILLMD_API: "https://env.example" }, config })).toBe("https://env.example");
   });
 });
 
@@ -53,6 +54,11 @@ describe("resolveApi https-only", () => {
     expect(() => resolveApi({ api: "http://localhost:8787" }, { env: {}, config: {} })).toThrow(/https/);
     expect(resolveApi({ api: "http://localhost:8787", insecureHttp: true }, { env: {}, config: {} })).toBe("http://localhost:8787");
     expect(resolveApi({}, { env: {}, config: {} })).toBe(DEFAULT_API);
+  });
+  it("rejects an http base whatever its case", () => {
+    expect(() => resolveApi({ api: "HTTP://localhost:8787" }, { env: {}, config: {} })).toThrow(/https/);
+    expect(() => resolveApi({}, { env: { SKILLMD_API: "Http://localhost:8787" }, config: {} })).toThrow(/https/);
+    expect(() => resolveApi({}, { env: {}, config: { api: "hTTp://localhost:8787" } })).toThrow(/https/);
   });
 });
 

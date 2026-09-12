@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import * as p from "@clack/prompts";
-import { readConfig, writeConfig, configPath, hostOf, DEFAULT_API } from "../config.js";
+import { readConfig, writeConfig, configPath, hostOf, resolveApi } from "../config.js";
 
 export function loginCommand(): Command {
   return new Command("login")
@@ -18,8 +18,11 @@ export function loginCommand(): Command {
       const cfg = readConfig();
       cfg.token = token;
       if (opts.api) cfg.api = opts.api;
-      // Bind the token to the host it was issued for — it is never sent anywhere else.
-      cfg.tokenHost = hostOf(opts.api ?? cfg.api ?? DEFAULT_API);
+      // Bind the token to the host it was issued for — it is never sent anywhere
+      // else. Resolve through the same chain the client uses (flag → SKILLMD_API
+      // → config → default) so the binding can't miss an env override, and so an
+      // http:// base is refused here rather than at the first authenticated call.
+      cfg.tokenHost = hostOf(resolveApi({ api: opts.api }, { env: process.env, config: cfg }));
       writeConfig(cfg);
       console.log(`Saved token to ${configPath()}`);
     });

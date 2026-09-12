@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { isAllowedSourceUrl } from "@skillmds/core";
 import { FETCH_TIMEOUT_MS, MAX_PACK_BYTES, MAX_PACK_FILES } from "./limits.js";
-import { resolveApi, resolveToken, hostOf, DEFAULT_API } from "./config.js";
+import { resolveApi, resolveToken, realSources, hostOf, DEFAULT_API } from "./config.js";
 import type { GlobalFlags, ResolveSources } from "./config.js";
 
 // SKILL.md materialization + the companion-file SSRF guard live in
@@ -46,8 +46,11 @@ export function timedFetch(f: typeof fetch, timeoutMs: number): typeof fetch {
 }
 
 export function createClient(flags: GlobalFlags = {}, opts: ClientOptions = {}) {
-  const base = opts.sources ? resolveApi(flags, opts.sources) : resolveApi(flags);
-  const token = opts.sources ? resolveToken(flags, opts.sources) : resolveToken(flags);
+  // Resolve the sources once so the config file is read at most once per client
+  // and the base URL and the token can never disagree about the target host.
+  const src = opts.sources ?? realSources();
+  const base = resolveApi(flags, src);
+  const token = resolveToken(flags, src);
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
   const doFetch = timedFetch(opts.fetch ?? fetch, timeoutMs);
   const host = hostOf(base);
@@ -60,7 +63,10 @@ export function createClient(flags: GlobalFlags = {}, opts: ClientOptions = {}) 
       res = await doFetch(base + path, { ...init, headers });
     } catch (e) {
       const cause = e instanceof Error ? ((e.cause as Error | undefined)?.message ?? e.message) : String(e);
-      const why = e instanceof Error && e.name === "TimeoutError" ? `timed out after ${Math.round(timeoutMs / 1000)}s` : cause;
+      // AbortSignal.timeout surfaces either as a bare TimeoutError (DOMException)
+      // or wrapped in a TypeError("fetch failed") whose cause is the TimeoutError.
+      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || (e.cause instanceof Error && e.cause.name === "TimeoutError"));
+      const why = isTimeout ? `timed out after ${Math.round(timeoutMs / 1000)}s` : cause;
       throw new RegistryError(`could not reach ${base}: ${why}`);
     }
     if (!res.ok) {

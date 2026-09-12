@@ -47,14 +47,19 @@ export function hostOf(url: string): string {
 }
 
 export interface ResolveSources { env: NodeJS.ProcessEnv; config: CliConfig }
-const realSources = (): ResolveSources => ({ env: process.env, config: readConfig() });
+/** The real environment + on-disk config. Callers that already hold a
+ *  ResolveSources (tests, or a client resolving base + token together) pass it
+ *  explicitly so the config file is read once — or not at all. */
+export const realSources = (): ResolveSources => ({ env: process.env, config: readConfig() });
 
+// `src` is a default parameter, so passing an explicit `undefined` still falls
+// back to the real sources — callers can forward an optional override directly.
 export function resolveApi(flags: GlobalFlags = {}, src: ResolveSources = realSources()): string {
   const base = (flags.api || src.env.SKILLMD_API || src.config.api || DEFAULT_API).replace(/\/+$/, "");
-  if (base.startsWith("http://") && !flags.insecureHttp) {
+  if (/^http:\/\//i.test(base) && !flags.insecureHttp) {
     throw new Error(`refusing to use an http:// API base (${base}) — your token would travel unencrypted. Use an https:// base, or pass --insecure-http for local development.`);
   }
-  if (!/^https?:\/\//.test(base)) throw new Error(`API base must be an http(s) URL, got "${base}"`);
+  if (!/^https?:\/\//i.test(base)) throw new Error(`API base must be an http(s) URL, got "${base}"`);
   return base;
 }
 
