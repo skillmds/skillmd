@@ -15,6 +15,9 @@ describe("stripTerminalEscapes", () => {
   it("leaves ordinary unicode alone", () => {
     expect(stripTerminalEscapes("ünïcode ✓ — ok")).toBe("ünïcode ✓ — ok");
   });
+  it("strips carriage returns (line-overwrite spoofing) but keeps newlines", () => {
+    expect(stripTerminalEscapes("real\rfake\n")).toBe("realfake\n");
+  });
 });
 
 describe("safeText", () => {

@@ -8,7 +8,7 @@
 const CSI = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const OSC = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const ESC_OTHER = /\x1b[@-Z\\-_]/g;
-const C0 = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+const C0 = /[\x00-\x08\x0b-\x1f\x7f]/g;
 const C1 = /[\x80-\x9f]/g;
 
 export function stripTerminalEscapes(input: string): string {
