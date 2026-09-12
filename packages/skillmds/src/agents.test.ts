@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentDir, detectAgents, installedSkills, writeSkill } from "./agents.js";
+import { AGENTS, agentDir, agentRootExists, agentSupportsGlobal, canonicalDir, detectAgents, installedSkills, writeSkill } from "./agents.js";
 
 const tmps: string[] = [];
 function tmp(): string {
@@ -22,7 +22,7 @@ describe("agentDir", () => {
     const home = tmp();
     expect(agentDir("windsurf", { cwd })).toBe(join(cwd, ".windsurf", "skills"));
     expect(agentDir("windsurf", { global: true, home })).toBe(join(home, ".codeium", "windsurf", "skills"));
-    expect(agentDir("antigravity", { cwd })).toBe(join(cwd, ".agents", "skills"));
+    expect(agentDir("antigravity", { cwd })).toBe(join(cwd, ".agent", "skills"));
     expect(agentDir("antigravity", { global: true, home })).toBe(join(home, ".gemini", "antigravity", "skills"));
   });
   it("throws on unknown agent", () => {
@@ -85,5 +85,43 @@ describe("writeSkill + installedSkills", () => {
     expect(() =>
       writeSkill("ok", [{ path: "../../../etc/pwn", contents: "x" }], target),
     ).toThrow(/unsafe path/);
+  });
+});
+
+describe("1.2 agent table", () => {
+  it("canonical dir is .agents/skills in both scopes", () => {
+    expect(canonicalDir({ cwd: "/p" })).toBe(join("/p", ".agents", "skills"));
+    expect(canonicalDir({ global: true, home: "/h" })).toBe(join("/h", ".agents", "skills"));
+  });
+  it("honours CLAUDE_CONFIG_DIR and CODEX_HOME for global dirs", () => {
+    const home = tmp();
+    expect(agentDir("claude-code", { global: true, home, env: { CLAUDE_CONFIG_DIR: "/cfg/claude" } })).toBe(join("/cfg/claude", "skills"));
+    expect(agentDir("codex", { global: true, home, env: { CODEX_HOME: "/cfg/codex" } })).toBe(join("/cfg/codex", "skills"));
+    expect(agentDir("codex", { global: true, home, env: {} })).toBe(join(home, ".codex", "skills"));
+  });
+  it("codex/gemini/antigravity/droid project dirs follow the agents' own conventions", () => {
+    expect(agentDir("codex", { cwd: "/p" })).toBe(join("/p", ".agents", "skills"));
+    expect(agentDir("gemini-cli", { cwd: "/p" })).toBe(join("/p", ".gemini", "skills"));
+    expect(agentDir("antigravity", { cwd: "/p" })).toBe(join("/p", ".agent", "skills"));
+    expect(agentDir("droid", { cwd: "/p" })).toBe(join("/p", ".factory", "skills"));
+  });
+  it("agentRootExists is true when the agent's project root dir (or a legacy one) exists", () => {
+    const cwd = tmp();
+    expect(agentRootExists("cursor", cwd)).toBe(false);
+    mkdirSync(join(cwd, ".cursor"));
+    expect(agentRootExists("cursor", cwd)).toBe(true);
+    const cwd2 = tmp();
+    mkdirSync(join(cwd2, ".codex"));
+    expect(agentRootExists("codex", cwd2)).toBe(true);
+  });
+  it("project-only agents report no global support", () => {
+    expect(agentSupportsGlobal("eve")).toBe(false);
+    expect(agentSupportsGlobal("claude-code")).toBe(true);
+    expect(() => agentDir("eve", { global: true, home: "/h" })).toThrow(/does not support global/);
+  });
+  it("every agent has a unique id and non-empty dirs", () => {
+    const ids = AGENTS.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const a of AGENTS) { expect(a.project.length).toBeGreaterThan(0); expect(a.detect.length).toBeGreaterThan(0); expect(a.projectRoots.length).toBeGreaterThan(0); }
   });
 });
