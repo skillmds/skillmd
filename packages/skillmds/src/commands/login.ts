@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import * as p from "@clack/prompts";
-import { readConfig, writeConfig, configPath } from "../config.js";
+import { readConfig, writeConfig, configPath, hostOf, DEFAULT_API } from "../config.js";
 
 export function loginCommand(): Command {
   return new Command("login")
@@ -18,6 +18,8 @@ export function loginCommand(): Command {
       const cfg = readConfig();
       cfg.token = token;
       if (opts.api) cfg.api = opts.api;
+      // Bind the token to the host it was issued for — it is never sent anywhere else.
+      cfg.tokenHost = hostOf(opts.api ?? cfg.api ?? DEFAULT_API);
       writeConfig(cfg);
       console.log(`Saved token to ${configPath()}`);
     });
@@ -29,6 +31,7 @@ export function logoutCommand(): Command {
     .action(() => {
       const cfg = readConfig();
       delete cfg.token;
+      delete cfg.tokenHost;
       writeConfig(cfg);
       console.log("Removed stored token.");
     });

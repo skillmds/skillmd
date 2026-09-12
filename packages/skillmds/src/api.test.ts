@@ -144,3 +144,54 @@ describe("skillMdFor", () => {
     expect(skillMdFor(skill)).toBe(reconstructSkillMd(skill));
   });
 });
+
+type FetchLike = typeof fetch;
+const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+describe("fetchBundle hard integrity + caps", () => {
+  it("verifies base64 files and refuses a mismatch", async () => {
+    const f: FetchLike = async () => jsonResponse({ files: [{ path: "a.txt", content_base64: Buffer.from("hi").toString("base64"), sha256: sha("nope") }] });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toBeInstanceOf(IntegrityError);
+  });
+  it("requires a sha256 for source_url files and verifies the fetched bytes", async () => {
+    const f: FetchLike = async (url) => {
+      if (String(url).includes("/bundle")) return jsonResponse({ files: [
+        { path: "SKILL.md", content_base64: Buffer.from("# s").toString("base64"), sha256: sha("# s") },
+        { path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("REF") },
+        { path: "nohash.md", source_url: "https://raw.githubusercontent.com/o/r/abc/nohash.md" },
+      ] });
+      return new Response("REF", { status: 200 });
+    };
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/nohash\.md.*no sha256/);
+  });
+  it("accepts a bundle whose url-delivered file matches its hash", async () => {
+    const f: FetchLike = async (url) => String(url).includes("/bundle")
+      ? jsonResponse({ files: [{ path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("REF") }] })
+      : new Response("REF", { status: 200 });
+    const out = await fetchBundle("https://api.test", "o/n", undefined, { fetch: f });
+    expect(out?.map((x) => x.path)).toEqual(["ref.md"]);
+  });
+  it("enforces the pack caps before returning", async () => {
+    const files = Array.from({ length: 201 }, (_, i) => ({ path: `f${i}.md`, content_base64: Buffer.from("x").toString("base64"), sha256: sha("x") }));
+    const f: FetchLike = async () => jsonResponse({ files });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/too large/);
+  });
+  it("passes an abort signal to every fetch", async () => {
+    let sawSignal = false;
+    const f: FetchLike = async (_url, init) => { sawSignal = Boolean(init?.signal); return jsonResponse({ files: [] }); };
+    await fetchBundle("https://api.test", "o/n", undefined, { fetch: f });
+    expect(sawSignal).toBe(true);
+  });
+});
+
+describe("createClient", () => {
+  it("attaches a timeout signal and reports the effective host", async () => {
+    let sawSignal = false;
+    const f: FetchLike = async (_u, init) => { sawSignal = Boolean(init?.signal); return jsonResponse({ ok: 1 }); };
+    const c = createClient({ api: "https://api.test" }, { fetch: f, sources: { env: {}, config: {} } });
+    await c.api("/x");
+    expect(sawSignal).toBe(true);
+    expect(c.host).toBe("api.test");
+    expect(c.isDefaultHost).toBe(false);
+  });
+});

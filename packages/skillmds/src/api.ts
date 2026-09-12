@@ -2,8 +2,9 @@
 // the resolved base URL + bearer token.
 import { createHash } from "node:crypto";
 import { isAllowedSourceUrl } from "@skillmds/core";
-import { resolveApi, resolveToken } from "./config.js";
-import type { GlobalFlags } from "./config.js";
+import { FETCH_TIMEOUT_MS, MAX_PACK_BYTES, MAX_PACK_FILES } from "./limits.js";
+import { resolveApi, resolveToken, hostOf, DEFAULT_API } from "./config.js";
+import type { GlobalFlags, ResolveSources } from "./config.js";
 
 // SKILL.md materialization + the companion-file SSRF guard live in
 // @skillmds/core so the CLI and the MCP server share one implementation.
@@ -33,19 +34,34 @@ export class RegistryError extends Error {
   }
 }
 
-export function createClient(flags: GlobalFlags = {}) {
-  const base = resolveApi(flags);
-  const token = resolveToken(flags);
+export interface ClientOptions {
+  fetch?: typeof fetch;
+  sources?: ResolveSources;
+  timeoutMs?: number;
+}
+
+/** fetch with a hard deadline. Node >=18 supports AbortSignal.timeout. */
+export function timedFetch(f: typeof fetch, timeoutMs: number): typeof fetch {
+  return (input, init = {}) => f(input, { ...init, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
+}
+
+export function createClient(flags: GlobalFlags = {}, opts: ClientOptions = {}) {
+  const base = opts.sources ? resolveApi(flags, opts.sources) : resolveApi(flags);
+  const token = opts.sources ? resolveToken(flags, opts.sources) : resolveToken(flags);
+  const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const doFetch = timedFetch(opts.fetch ?? fetch, timeoutMs);
+  const host = hostOf(base);
 
   async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = { accept: "application/json", ...(init.headers as Record<string, string> | undefined) };
     if (token) headers.authorization = `Bearer ${token}`;
     let res: Response;
     try {
-      res = await fetch(base + path, { ...init, headers });
+      res = await doFetch(base + path, { ...init, headers });
     } catch (e) {
       const cause = e instanceof Error ? ((e.cause as Error | undefined)?.message ?? e.message) : String(e);
-      throw new RegistryError(`could not reach ${base}: ${cause}`);
+      const why = e instanceof Error && e.name === "TimeoutError" ? `timed out after ${Math.round(timeoutMs / 1000)}s` : cause;
+      throw new RegistryError(`could not reach ${base}: ${why}`);
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
@@ -54,7 +70,7 @@ export function createClient(flags: GlobalFlags = {}) {
     return (await res.json()) as T;
   }
 
-  return { api, base, token, hasToken: Boolean(token) };
+  return { api, base, host, isDefaultHost: host === hostOf(DEFAULT_API), token, hasToken: Boolean(token), fetch: doFetch };
 }
 
 export type Client = ReturnType<typeof createClient>;
@@ -64,36 +80,47 @@ export interface BundleFile {
   contents: Buffer;
 }
 
-/** Fetch a pack's full file set from the registry bundle (registry-stored, pinned).
- *  Uses ?format=json so no unzip dependency is needed; GitHub-fallback files are
- *  fetched from their pinned raw URL. Returns null if the bundle is unavailable,
- *  letting the caller fall back to a live GitHub fetch. */
-export async function fetchBundle(base: string, slug: string, token?: string): Promise<BundleFile[] | null> {
+export interface BundleOptions { fetch?: typeof fetch; timeoutMs?: number }
+
+/** Fetch a pack's full file set from the registry bundle. EVERY file must carry
+ *  a sha256 and match it — whether delivered inline (base64) or by URL from an
+ *  allow-listed host. A missing or mismatching hash blocks the whole install:
+ *  the registry is the integrity authority, the transport is not. Returns null
+ *  if the bundle is unavailable, letting the caller fall back to GitHub. */
+export async function fetchBundle(base: string, slug: string, token?: string, opts: BundleOptions = {}): Promise<BundleFile[] | null> {
+  const doFetch = timedFetch(opts.fetch ?? fetch, opts.timeoutMs ?? FETCH_TIMEOUT_MS);
   const headers: Record<string, string> = { accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
-  const res = await fetch(`${base}/api/skills/${slug}/bundle?format=json`, { headers }).catch(() => null);
+  const res = await doFetch(`${base}/api/skills/${slug}/bundle?format=json`, { headers }).catch(() => null);
   if (!res || !res.ok) return null;
   const data = (await res.json().catch(() => null)) as { files?: { path: string; content_base64?: string; source_url?: string; sha256?: string | null }[] } | null;
   if (!data?.files) return null;
+  if (data.files.length > MAX_PACK_FILES) throw new Error(`pack too large: > ${MAX_PACK_FILES} files`);
   const out: BundleFile[] = [];
+  let bytes = 0;
   for (const f of data.files) {
+    let contents: Buffer;
     if (f.content_base64 != null) {
-      const contents = Buffer.from(f.content_base64, "base64");
-      // Integrity gate: registry-stored files are content-addressed, so the registry
-      // reports their sha256. Verify the bytes match before trusting them — a
-      // mismatch means the content was substituted in transit or at rest.
-      // Files without a sha256 (the reconstructed inline SKILL.md) are skipped.
-      if (f.sha256) {
-        const got = createHash("sha256").update(contents).digest("hex");
-        if (got !== f.sha256) {
-          throw new IntegrityError(`integrity check failed for "${f.path}" (expected ${f.sha256.slice(0, 12)}…, got ${got.slice(0, 12)}…)`);
-        }
-      }
-      out.push({ path: f.path, contents });
+      contents = Buffer.from(f.content_base64, "base64");
     } else if (f.source_url && isAllowedSourceUrl(f.source_url)) {
-      const r = await fetch(f.source_url).catch(() => null);
-      if (r && r.ok) out.push({ path: f.path, contents: Buffer.from(await r.arrayBuffer()) });
+      if (!f.sha256) throw new IntegrityError(`"${f.path}" is delivered by URL but the registry recorded no sha256 for it — refusing to install unverifiable content`);
+      const r = await doFetch(f.source_url).catch(() => null);
+      if (!r || !r.ok) throw new Error(`could not fetch companion file "${f.path}" from ${hostOf(f.source_url)}`);
+      contents = Buffer.from(await r.arrayBuffer());
+    } else {
+      continue; // unknown delivery / disallowed host: skip, never write
     }
+    bytes += contents.length;
+    if (bytes > MAX_PACK_BYTES) throw new Error(`pack too large: > ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB`);
+    // The reconstructed inline SKILL.md is the only file the registry may
+    // serve without a hash (it is generated, not stored).
+    if (f.sha256) {
+      const got = createHash("sha256").update(contents).digest("hex");
+      if (got !== f.sha256) throw new IntegrityError(`integrity check failed for "${f.path}" (expected ${f.sha256.slice(0, 12)}…, got ${got.slice(0, 12)}…)`);
+    } else if (f.path !== "SKILL.md") {
+      throw new IntegrityError(`"${f.path}" has no sha256 in the registry bundle — refusing to install unverifiable content`);
+    }
+    out.push({ path: f.path, contents });
   }
   return out;
 }
