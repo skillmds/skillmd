@@ -1,18 +1,21 @@
 import { Command, Option } from "commander";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import * as p from "@clack/prompts";
+import { join, resolve } from "node:path";
 import pc from "picocolors";
 import { lint } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
 import type { RegistrySkill } from "../api.js";
 import { resolveSource, resolveTree } from "../source.js";
 import type { TreeFile } from "../source.js";
-import { agentDir, detectAgents, writeSkill } from "../agents.js";
+import { AGENTS, agentDir, detectAgents, writeSkill } from "../agents.js";
 import type { SkillFileInput } from "../agents.js";
 
 export interface AddFlags {
   global?: boolean;
+  /** Force project scope (the current directory) even when it doesn't look like a project. */
+  project?: boolean;
   agent?: string[];
   skill?: string[];
   copy?: boolean;
@@ -20,6 +23,7 @@ export interface AddFlags {
   allowUnverified?: boolean;
   skipLint?: boolean;
   deny?: string[];
+  json?: boolean;
   token?: string;
   api?: string;
   /** Internal: project root override (tests). */
@@ -46,6 +50,52 @@ export interface AddCandidate {
 export interface AddDeps {
   resolve: (arg: string, flags: AddFlags) => Promise<AddCandidate[]>;
   fireInstall: (registrySlug: string, flags: AddFlags) => void;
+  /**
+   * Ask the user where to install when neither scope flag was given. Returns
+   * true for global, false for project, null when the user cancelled. Absent
+   * (tests, non-interactive callers) → scope is auto-detected instead.
+   */
+  promptScope?: (ctx: { cwd: string; suggestGlobal: boolean }) => Promise<boolean | null>;
+  /** Let the user narrow the detected agents. null = cancelled. Absent → all detected. */
+  promptAgents?: (ctx: { detected: string[]; dirFor: (id: string) => string }) => Promise<string[] | null>;
+}
+
+/** Files or dirs whose presence marks a directory as a project root. Mirrors the
+ *  `skills` CLI's auto-detect rule ("project if in a project, else global"). */
+const PROJECT_MARKERS = [".git", "package.json", "pyproject.toml", "Cargo.toml", "go.mod", "AGENTS.md", "CLAUDE.md", "skills-lock.json"];
+
+/** Does `dir` look like a project root? True when it carries a common project
+ *  marker or already has an agent's dot-directory (`.claude`, `.cursor`, `.agents`, …). */
+export function looksLikeProject(dir: string): boolean {
+  if (PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) return true;
+  const agentRoots = new Set(AGENTS.map((a) => a.project[0]!).filter((seg) => seg.startsWith(".")));
+  return [...agentRoots].some((seg) => existsSync(join(dir, seg)));
+}
+
+const interactive = () => Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
+/** Same choice the `skills` CLI offers: Project vs Global, before anything is written. */
+async function promptScopeInteractive(ctx: { cwd: string; suggestGlobal: boolean }): Promise<boolean | null> {
+  const choice = await p.select({
+    message: "Installation scope",
+    initialValue: ctx.suggestGlobal,
+    options: [
+      { value: false, label: "Project", hint: `install in ${ctx.cwd} (committed with your project)` },
+      { value: true, label: "Global", hint: "install in your home directory (available across all projects)" },
+    ],
+  });
+  return p.isCancel(choice) ? null : (choice as boolean);
+}
+
+async function promptAgentsInteractive(ctx: { detected: string[]; dirFor: (id: string) => string }): Promise<string[] | null> {
+  if (ctx.detected.length < 2) return ctx.detected;
+  const picked = await p.multiselect({
+    message: "Which agents do you want to install to?",
+    options: ctx.detected.map((id) => ({ value: id, label: id, hint: ctx.dirFor(id) })),
+    initialValues: ctx.detected,
+    required: true,
+  });
+  return p.isCancel(picked) ? null : (picked as string[]);
 }
 
 function isLocalish(arg: string): boolean {
@@ -154,6 +204,8 @@ const defaultDeps: AddDeps = {
       throw e;
     }
   },
+  get promptScope() { return interactive() ? promptScopeInteractive : undefined; },
+  get promptAgents() { return interactive() ? promptAgentsInteractive : undefined; },
   fireInstall(registrySlug, flags) {
     const { api } = createClient(flags);
     const [owner, name] = registrySlug.split("/");
@@ -170,7 +222,42 @@ export interface AddResult {
   blocked: { name: string; reason: string }[];
   exitCode: 0 | 1;
   output: string;
+  /** The user backed out of a prompt; nothing was written. */
+  cancelled?: boolean;
 }
+
+export type Scope = { global: boolean; cwd?: string; home?: string };
+
+/**
+ * Decide project vs global. Explicit flags win; the home dir is always global
+ * (project scope rooted at $HOME *is* the global layout). Otherwise a terminal
+ * user is asked — the way `npx skills add` does — and non-interactive callers
+ * (-y, --json, piped stdin) get the auto-detect rule: project if the current
+ * directory looks like a project, else global. Running `add` from the Desktop
+ * or any stray folder must never litter it with a dozen agent directories.
+ */
+export async function resolveScope(flags: AddFlags, deps: AddDeps): Promise<{ scope: Scope; note?: string } | null> {
+  const home = resolve(flags.home ?? homedir());
+  const cwd = resolve(flags.cwd ?? process.cwd());
+  const base = { cwd: flags.cwd, home: flags.home };
+  if (flags.global) return { scope: { global: true, ...base } };
+  if (flags.project) return { scope: { global: false, ...base } };
+  if (cwd === home) return { scope: { global: true, ...base } };
+
+  const isProject = looksLikeProject(cwd);
+  if (deps.promptScope && !flags.yes && !flags.json) {
+    const global = await deps.promptScope({ cwd, suggestGlobal: !isProject });
+    if (global === null) return null;
+    return { scope: { global, ...base } };
+  }
+  if (isProject) return { scope: { global: false, ...base } };
+  return {
+    scope: { global: true, ...base },
+    note: `no project detected in ${cwd} — installing to your user-level agent folders (pass --project to install here)`,
+  };
+}
+
+const CANCELLED: AddResult = { written: [], blocked: [], exitCode: 0, cancelled: true, output: pc.dim("Installation cancelled — nothing was installed.") };
 
 export async function runAdd(arg: string, flags: AddFlags, deps: AddDeps = defaultDeps): Promise<AddResult> {
   let candidates: AddCandidate[];
@@ -195,14 +282,19 @@ export async function runAdd(arg: string, flags: AddFlags, deps: AddDeps = defau
   const blocked: AddResult["blocked"] = [];
   const lines: string[] = [];
 
-  // Running from the home dir means "project scope" IS the home dir — use the
-  // global layout there (agents like antigravity/gemini-cli keep their global
-  // skills somewhere other than <root>/<project-dir>).
+  const resolved = await resolveScope(flags, deps);
+  if (!resolved) return CANCELLED;
+  const { scope } = resolved;
+  const isGlobal = scope.global;
   const home = flags.home ?? homedir();
-  const isGlobal = flags.global || resolve(flags.cwd ?? process.cwd()) === resolve(home);
-  const scope = { global: isGlobal, cwd: flags.cwd, home: flags.home };
+  if (resolved.note) lines.push(pc.dim(`ℹ ${resolved.note}`));
   const detected = detectAgents(scope);
-  const targets = flags.agent?.length ? flags.agent : (detected.length ? detected : ["claude-code"]);
+  let targets = flags.agent?.length ? flags.agent : (detected.length ? detected : ["claude-code"]);
+  if (!flags.agent?.length && deps.promptAgents && !flags.yes && !flags.json) {
+    const picked = await deps.promptAgents({ detected: targets, dirFor: (id) => agentDir(id, scope) });
+    if (picked === null) return CANCELLED;
+    targets = picked;
+  }
   // Several agents share a skills dir (the `.agents/skills` convention) — write
   // each physical dir once, labelled with every agent it serves.
   const dirAgents = new Map<string, string[]>();
@@ -256,11 +348,12 @@ export function addCommand(): Command {
   return new Command("add")
     .description("Install a skill from the registry, a GitHub repo, or a local path (lints before writing)")
     .argument("<source>", "registry slug (owner/name), GitHub source, or local path")
-    .option("-g, --global", "install to the user directory instead of the project")
+    .option("-g, --global", "install to your user-level agent folders (available in every project)")
+    .option("-p, --project", "install into the current directory's agent folders (committed with the project)")
     .option("-a, --agent <agents...>", "target specific agents (default: every agent detected on this machine)")
     .option("-s, --skill <names...>", "install only specific skills by name ('*' for all)")
     .option("--copy", "copy files (default)", true)
-    .option("-y, --yes", "skip confirmation prompts")
+    .option("-y, --yes", "skip prompts; scope is auto-detected (project if this folder looks like a project, else global)")
     // deprecated no-op: installs are no longer gated on verification. Kept so
     // older install snippets that pass it don't error.
     .addOption(new Option("--allow-unverified").hideHelp())

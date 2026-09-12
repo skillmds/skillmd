@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, existsSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAdd, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
+import { runAdd, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
 import type { AddCandidate, AddDeps } from "./add.js";
 import { RegistryError } from "../api.js";
 
@@ -21,6 +21,8 @@ license: MIT
 ${"Plenty of detailed body content well past two hundred characters in total. ".repeat(3)}
 `;
 
+const sameHome = (d: string) => ({ cwd: d, home: d });
+
 function depsReturning(candidates: AddCandidate[]): AddDeps {
   return { resolve: async () => candidates, fireInstall: () => {} };
 }
@@ -28,7 +30,7 @@ function depsReturning(candidates: AddCandidate[]): AddDeps {
 describe("runAdd lint gate", () => {
   it("refuses to write a skill with lint errors and exits 1", async () => {
     const cwd = tmp();
-    const run = await runAdd("x", { agent: ["claude-code"], cwd }, depsReturning([{ name: "bad", raw: BROKEN, slug: "bad" }]));
+    const run = await runAdd("x", { agent: ["claude-code"], cwd, home: cwd }, depsReturning([{ name: "bad", raw: BROKEN, slug: "bad" }]));
     expect(run.exitCode).toBe(1);
     expect(run.written).toHaveLength(0);
     expect(existsSync(join(cwd, ".claude", "skills", "bad"))).toBe(false);
@@ -36,19 +38,19 @@ describe("runAdd lint gate", () => {
 
   it("writes when --skip-lint is set", async () => {
     const cwd = tmp();
-    const run = await runAdd("x", { agent: ["claude-code"], cwd, skipLint: true }, depsReturning([{ name: "bad", raw: BROKEN, slug: "bad" }]));
+    const run = await runAdd("x", { agent: ["claude-code"], cwd, home: cwd, skipLint: true }, depsReturning([{ name: "bad", raw: BROKEN, slug: "bad" }]));
     expect(run.exitCode).toBe(0);
     expect(existsSync(join(cwd, ".claude", "skills", "bad", "SKILL.md"))).toBe(true);
   });
 
   it("writes a clean skill and blocks denied security flags", async () => {
     const cwd = tmp();
-    const ok = await runAdd("x", { agent: ["claude-code"], cwd }, depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
+    const ok = await runAdd("x", { agent: ["claude-code"], cwd, home: cwd }, depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
     expect(ok.written).toHaveLength(1);
 
     const denied = await runAdd(
       "x",
-      { agent: ["claude-code"], cwd: tmp(), deny: ["network_calls"] },
+      { agent: ["claude-code"], ...sameHome(tmp()), deny: ["network_calls"] },
       depsReturning([{ name: "good", raw: GOOD + "\nSee https://example.com for details.\n", slug: "good" }]),
     );
     expect(denied.exitCode).toBe(1);
@@ -57,7 +59,7 @@ describe("runAdd lint gate", () => {
 
   it("installs unverified registry skills without any gate or flag", async () => {
     const cwd = tmp();
-    const run = await runAdd("o/n", { agent: ["claude-code"], cwd }, depsReturning([{ name: "good", raw: GOOD, slug: "good", registrySlug: "o/n", verified: false, securityFlags: ["network_calls"] }]));
+    const run = await runAdd("o/n", { agent: ["claude-code"], cwd, home: cwd }, depsReturning([{ name: "good", raw: GOOD, slug: "good", registrySlug: "o/n", verified: false, securityFlags: ["network_calls"] }]));
     expect(run.exitCode).toBe(0);
     expect(run.written).toHaveLength(1);
     expect(run.blocked).toHaveLength(0);
@@ -207,5 +209,90 @@ describe("verification never gates installs", () => {
     const r = await runAdd("o/demo", { cwd, home: cwd, deny: ["network_calls"] }, unverifiedDeps());
     expect(r.written).toHaveLength(0);
     expect(r.blocked[0]?.reason).toContain("network_calls");
+  });
+});
+
+describe("install scope", () => {
+  const demo = [{ name: "demo", raw: VALID, slug: "demo" }];
+
+  it("falls back to the user-level dirs when the cwd is not a project (never litters a stray folder)", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    const r = await runAdd("o/demo", { agent: ["claude-code"], cwd, home }, depsReturning(demo));
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(home, ".claude", "skills", "demo", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude"))).toBe(false);
+    expect(r.output).toContain("no project detected");
+    expect(r.output).toContain("--project");
+  });
+
+  it("installs into the project when the cwd carries a project marker", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    mkdirSync(join(cwd, ".git"));
+    const r = await runAdd("o/demo", { agent: ["claude-code"], cwd, home }, depsReturning(demo));
+    expect(existsSync(join(cwd, ".claude", "skills", "demo", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".claude"))).toBe(false);
+    expect(r.output).not.toContain("no project detected");
+  });
+
+  it("treats an existing agent dot-dir as a project marker", () => {
+    const cwd = tmp();
+    expect(looksLikeProject(cwd)).toBe(false);
+    mkdirSync(join(cwd, ".cursor"));
+    expect(looksLikeProject(cwd)).toBe(true);
+  });
+
+  it("--project forces the cwd even without markers", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    await runAdd("o/demo", { agent: ["claude-code"], cwd, home, project: true }, depsReturning(demo));
+    expect(existsSync(join(cwd, ".claude", "skills", "demo", "SKILL.md"))).toBe(true);
+  });
+
+  it("asks the user when a prompt is available and honours the answer", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    const seen: { cwd: string; suggestGlobal: boolean }[] = [];
+    const deps: AddDeps = { ...depsReturning(demo), promptScope: async (ctx) => { seen.push(ctx); return true; } };
+    await runAdd("o/demo", { agent: ["claude-code"], cwd, home }, deps);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.suggestGlobal).toBe(true);
+    expect(existsSync(join(home, ".claude", "skills", "demo", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude"))).toBe(false);
+  });
+
+  it("does not prompt with -y or --json, and never when a scope flag is given", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    let asked = 0;
+    const deps: AddDeps = { ...depsReturning(demo), promptScope: async () => { asked++; return false; } };
+    await runAdd("o/demo", { agent: ["claude-code"], cwd, home, yes: true }, deps);
+    await runAdd("o/demo", { agent: ["claude-code"], cwd, home, json: true }, deps);
+    await runAdd("o/demo", { agent: ["claude-code"], cwd, home, global: true }, deps);
+    expect(asked).toBe(0);
+  });
+
+  it("cancelling the prompt writes nothing and exits 0", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    const deps: AddDeps = { ...depsReturning(demo), promptScope: async () => null };
+    const r = await runAdd("o/demo", { agent: ["claude-code"], cwd, home }, deps);
+    expect(r.cancelled).toBe(true);
+    expect(r.exitCode).toBe(0);
+    expect(r.written).toHaveLength(0);
+    expect(existsSync(join(cwd, ".claude"))).toBe(false);
+    expect(existsSync(join(home, ".claude"))).toBe(false);
+  });
+
+  it("lets the user narrow the detected agents", async () => {
+    const cwd = tmp();
+    const home = tmp();
+    mkdirSync(join(home, ".claude"));
+    mkdirSync(join(home, ".cursor"));
+    const deps: AddDeps = { ...depsReturning(demo), promptAgents: async ({ detected }) => detected.filter((a) => a === "cursor") };
+    const r = await runAdd("o/demo", { cwd, home, global: true }, deps);
+    expect(r.written.map((w) => w.dir)).toEqual([join(home, ".cursor", "skills", "demo")]);
+    expect(existsSync(join(home, ".claude", "skills"))).toBe(false);
   });
 });

@@ -70,6 +70,15 @@ skillmd add some/skill --deny executes_scripts
 skillmd add some/skill --skip-lint
 ```
 
+**Where skills land.** In a terminal, `add` asks for the scope before writing anything:
+
+| Scope | Flag | Location | Use case |
+| --- | --- | --- | --- |
+| **Project** | `-p`, `--project` | `./<agent>/skills/` | Committed with your project, shared with the team |
+| **Global** | `-g`, `--global` | `~/<agent>/skills/` | Available in every project |
+
+Without a flag in a non-interactive run (`-y`, `--json`, piped stdin) the scope is auto-detected: project if the current directory looks like one (`.git`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `AGENTS.md`, `CLAUDE.md`, or an existing agent dir), otherwise global — so running it from your Desktop never creates agent folders there. Without `-a`, every agent detected on the machine is offered; `-a` targets specific ones.
+
 ### publish
 
 ```bash

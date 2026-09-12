@@ -2,6 +2,14 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.1.3
+
+- **`skillmd add` no longer litters whatever folder you happen to be in.** Before, the current directory was always treated as "the project", so running `npx skillmds add owner/name` from your Desktop created `.claude/`, `.cursor/`, `.codex/`, `.agents/`… right there. Now:
+  - In a terminal, `add` asks **Installation scope: Project / Global** before writing anything (the same choice `npx skills add` offers), pre-selecting the sensible one, and then lets you narrow the detected agents.
+  - Non-interactively (`-y`, `--json`, piped stdin) the scope is auto-detected: **project if the current directory looks like a project** (`.git`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `AGENTS.md`, `CLAUDE.md`, or an existing `.claude/`-style agent dir), **otherwise your user-level agent folders**, with a note saying so.
+  - New `-p, --project` flag forces the current directory; `-g, --global` is unchanged. Cancelling a prompt installs nothing and exits 0.
+- Fix for the interactive menu: "Install to this project" now always means the current directory.
+
 ## 1.1.2
 
 - **MCP tool metadata.** Every tool now declares a `title`, `annotations` (all read-only except `skillmd_install`, none destructive), an `outputSchema`, and a description on every parameter; list-returning tools respond with `structuredContent: { items }`, `skillmd_lint` and `skillmd_install` return structured results, and refusals are flagged `isError`.

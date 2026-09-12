@@ -89,7 +89,7 @@ async function browseOneResult(item: SearchItem): Promise<void> {
     // unverified skills, and a live spinner garbles the terminal around prompts.
     p.log.step(`Installing ${item.slug}…`);
     try {
-      const run = await runAdd(item.slug, action === "global" ? { global: true } : {});
+      const run = await runAdd(item.slug, action === "global" ? { global: true } : { project: true });
       console.log(run.output);
       if (run.exitCode === 0) p.log.success("Installed.");
       else p.log.warn("Not installed.");
