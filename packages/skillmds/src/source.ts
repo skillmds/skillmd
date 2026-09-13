@@ -9,6 +9,8 @@ import { parseSource, gigetInput } from "./sources.js";
 import type { SourceSpec } from "./sources.js";
 import { FETCH_TIMEOUT_MS, MAX_PACK_BYTES, MAX_PACK_FILES } from "./limits.js";
 import { timedFetch } from "./api.js";
+import type { RegistrySkill } from "./api.js";
+import type { SkillFileInput } from "./installer.js";
 
 export interface ResolvedSkill {
   /** Display label / relative path used in reports. */
@@ -191,4 +193,34 @@ export async function resolveTree(sourceUrl: string, ref?: string, opts: RemoteO
   } finally {
     cleanup();
   }
+}
+
+export interface PackResolution {
+  raw: string;
+  files: SkillFileInput[];
+  pinMiss: boolean;
+}
+
+/** Fetch a pack's full file tree, degrading in two steps: pinned commit →
+ *  default branch (source repos force-push; bad pins are a real-world
+ *  condition) → null, letting the caller fall back to the registry copy.
+ *  An unpinned fetch is acceptable degradation: the fetched SKILL.md is still
+ *  linted before install and the unverified gate still applies. */
+export async function resolvePackFiles(
+  skill: Pick<RegistrySkill, "source_repo" | "commit_sha">,
+  fetchTree: (url: string, ref?: string) => Promise<TreeFile[]> = resolveTree,
+): Promise<PackResolution | null> {
+  if (!skill.source_repo) return null;
+  const attempts: { ref?: string; pinMiss: boolean }[] = [{ ref: skill.commit_sha ?? undefined, pinMiss: false }];
+  if (skill.commit_sha) attempts.push({ ref: undefined, pinMiss: true });
+  for (const attempt of attempts) {
+    try {
+      const files = await fetchTree(skill.source_repo, attempt.ref);
+      const sk = files.find((f) => f.path === "SKILL.md");
+      if (sk) return { raw: sk.contents.toString("utf8"), files, pinMiss: attempt.pinMiss };
+    } catch {
+      // pinned commit gone (force-push) or network/repo failure → next step
+    }
+  }
+  return null;
 }

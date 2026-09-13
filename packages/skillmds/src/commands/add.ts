@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
 import { dirname, join, resolve } from "node:path";
@@ -7,9 +6,9 @@ import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
 import type { RegistrySkill } from "../api.js";
-import { collectFiles, resolveSource, resolveTree } from "../source.js";
-import type { TreeFile } from "../source.js";
-import { AGENTS, agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
+import { collectFiles, resolvePackFiles, resolveSource } from "../source.js";
+import { looksLikeProject } from "../project.js";
+import { agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
 import { installSkill } from "../installer.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
@@ -19,6 +18,14 @@ import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
 import { safeText } from "../sanitize.js";
 import { GLYPH, banner, renderInstallSummary } from "../ui.js";
 import type { PathCtx } from "../ui.js";
+
+// Re-exported so `skillmd add`'s long-standing public surface keeps working for
+// importers (and tests) that still reach for them here. The implementations
+// moved out of the command layer so the MCP entry can use them without loading
+// commander/clack.
+export { looksLikeProject } from "../project.js";
+export { resolvePackFiles } from "../source.js";
+export type { PackResolution } from "../source.js";
 
 export interface AddFlags {
   global?: boolean;
@@ -84,21 +91,6 @@ export interface AddDeps {
   needsPrompt?: boolean;
 }
 
-/** Files or dirs whose presence marks a directory as a project root. Mirrors the
- *  `skills` CLI's auto-detect rule ("project if in a project, else global"). */
-const PROJECT_MARKERS = [".git", "package.json", "pyproject.toml", "Cargo.toml", "go.mod", "AGENTS.md", "CLAUDE.md", "skills-lock.json"];
-
-/** Every dot-directory that marks an agent as present in a project, current and
- *  legacy alike (`.codex`, `.kilocode`, …). Non-dot roots (`agent`, `skills`) are
- *  too generic to imply "this is a project". */
-const AGENT_PROJECT_ROOTS = [...new Set(AGENTS.flatMap((a) => a.projectRoots))].filter((r) => r.startsWith("."));
-
-/** Does `dir` look like a project root? True when it carries a common project
- *  marker or already has an agent's dot-directory (`.claude`, `.cursor`, `.agents`, …). */
-export function looksLikeProject(dir: string): boolean {
-  if (PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) return true;
-  return AGENT_PROJECT_ROOTS.some((seg) => existsSync(join(dir, seg)));
-}
 
 // ---------------------------------------------------------------------------
 // Notices — every non-fatal remark this command can make. The text is written
@@ -149,36 +141,6 @@ async function promptAgentsInteractive(ctx: { detected: string[]; dirFor: (id: s
     required: true,
   });
   return p.isCancel(picked) ? null : (picked as string[]);
-}
-
-export interface PackResolution {
-  raw: string;
-  files: SkillFileInput[];
-  pinMiss: boolean;
-}
-
-/** Fetch a pack's full file tree, degrading in two steps: pinned commit →
- *  default branch (source repos force-push; bad pins are a real-world
- *  condition) → null, letting the caller fall back to the registry copy.
- *  An unpinned fetch is acceptable degradation: the fetched SKILL.md is still
- *  linted before install and the unverified gate still applies. */
-export async function resolvePackFiles(
-  skill: Pick<RegistrySkill, "source_repo" | "commit_sha">,
-  fetchTree: (url: string, ref?: string) => Promise<TreeFile[]> = resolveTree,
-): Promise<PackResolution | null> {
-  if (!skill.source_repo) return null;
-  const attempts: { ref?: string; pinMiss: boolean }[] = [{ ref: skill.commit_sha ?? undefined, pinMiss: false }];
-  if (skill.commit_sha) attempts.push({ ref: undefined, pinMiss: true });
-  for (const attempt of attempts) {
-    try {
-      const files = await fetchTree(skill.source_repo, attempt.ref);
-      const sk = files.find((f) => f.path === "SKILL.md");
-      if (sk) return { raw: sk.contents.toString("utf8"), files, pinMiss: attempt.pinMiss };
-    } catch {
-      // pinned commit gone (force-push) or network/repo failure → next step
-    }
-  }
-  return null;
 }
 
 /** Caveat attached when a registry slug ends up installed from GitHub only

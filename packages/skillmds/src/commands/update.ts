@@ -12,7 +12,7 @@ import { digestOf, installSkill, listInstalled } from "../installer.js";
 import type { SkillFileInput } from "../installer.js";
 import { readLock } from "../lock.js";
 import { scopesFor } from "../env.js";
-import { resolvePackFiles } from "./add.js";
+import { resolvePackFiles } from "../source.js";
 
 export interface UpdateFlags { global?: boolean; project?: boolean; check?: boolean; yes?: boolean; json?: boolean; token?: string; api?: string; insecureHttp?: boolean; cwd?: string; home?: string }
 export interface Latest { files: SkillFileInput[]; commit_sha?: string }
