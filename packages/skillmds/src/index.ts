@@ -54,10 +54,12 @@ Publish:   publish  login  logout
 Docs: https://skillmd.com/docs/cli`);
 
 // A token on the command line lands in shell history and in every `ps` listing
-// on the machine. Warn once, on a terminal only, so piped/JSON output stays clean.
+// on the machine. Warn once, and only when a human will see it: the warning
+// goes to stderr, so stderr is the stream whose TTY-ness decides — a run that
+// pipes stdout to a file is still a person at a terminal.
 program.hook("preAction", (thisCmd) => {
   const opts = thisCmd.opts() as { token?: string };
-  if (opts.token && process.stdout.isTTY) {
+  if (opts.token && process.stderr.isTTY) {
     console.error(pc.yellow("⚠ --token is visible in your shell history and process list; prefer `skillmd login` or SKILLMD_TOKEN."));
   }
 });

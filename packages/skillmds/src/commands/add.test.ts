@@ -2,10 +2,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAdd, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
-import type { AddCandidate, AddDeps, AddFlags } from "./add.js";
+import { runAdd, runAddWithUI, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
+import type { AddCandidate, AddDeps, AddFlags, AddUI } from "./add.js";
 import { IntegrityError, RegistryError } from "../api.js";
 import { readLock } from "../lock.js";
+import { GLYPH, stripAnsi } from "../ui.js";
 
 const tmps: string[] = [];
 function tmp(): string { const d = mkdtempSync(join(tmpdir(), "skillmd-add-")); tmps.push(d); return d; }
@@ -537,6 +538,110 @@ describe("--force and untracked directories", () => {
     expect(refused.blocked[0]?.reason).toMatch(/not tracked/);
     const ok = await runAdd("o/x", { ...base, force: true }, depsReturning([tracked("x")]));
     expect(ok.exitCode).toBe(0);
+  });
+});
+
+describe("human output", () => {
+  it("names the provenance the install was recorded under", async () => {
+    const home = tmp();
+    const r = await runAdd("o/demo", { cwd: tmp(), home, global: true, yes: true, agent: ["claude-code"], env: {} }, depsReturning([tracked("demo")]));
+    expect(r.exitCode).toBe(0);
+    expect(stripAnsi(r.output)).toContain("from registry:o/demo");
+  });
+
+  it("prints the replaced line exactly once under --force", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".agents", "skills", "x"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "x", "SKILL.md"), VALID);
+    const r = await runAdd(
+      "o/x",
+      { cwd: tmp(), home, global: true, yes: true, agent: ["claude-code"], force: true, env: {} },
+      depsReturning([tracked("x")]),
+    );
+    expect(r.exitCode).toBe(0);
+    const plain = stripAnsi(r.output);
+    expect(plain.match(/replaced previous install/g)).toHaveLength(1);
+    expect(plain).toContain(`${GLYPH.replaced} replaced previous install`);
+  });
+});
+
+describe("runAddWithUI framing", () => {
+  // A recording stand-in for clack: the only thing under test is the ORDER the
+  // frame is drawn in — an install document printed after the outro lands
+  // outside the box, which is the bug this guards.
+  function recorder(): { calls: string[]; ui: AddUI } {
+    const calls: string[] = [];
+    return {
+      calls,
+      ui: {
+        intro: () => { calls.push("intro"); },
+        spinner: () => ({ start: () => { calls.push("spinner.start"); }, stop: () => { calls.push("spinner.stop"); } }),
+        message: (m) => { calls.push(`message:${stripAnsi(m)}`); },
+        outro: (m) => { calls.push(`outro:${stripAnsi(m)}`); },
+        cancel: (m) => { calls.push(`cancel:${stripAnsi(m)}`); },
+      },
+    };
+  }
+
+  const tty = { stdinTTY: true, stdoutTTY: true, env: {} };
+
+  it("prints the install document inside the frame: intro → message → outro", async () => {
+    const { calls, ui } = recorder();
+    const { run, printed } = await runAddWithUI(
+      "o/demo",
+      { cwd: tmp(), home: tmp(), global: true, agent: ["claude-code"], env: {} },
+      { ui, term: tty, deps: depsReturning([tracked("demo")]) },
+    );
+    expect(run.exitCode).toBe(0);
+    expect(printed).toBe(true);
+    const framed = calls.filter((c) => !c.startsWith("spinner"));
+    expect(framed[0]).toBe("intro");
+    expect(framed[1]).toContain("message:");
+    expect(framed[1]).toContain("demo");
+    expect(framed[2]).toMatch(/^outro:Done\./);
+    expect(framed).toHaveLength(3);
+  });
+
+  it("closes the frame with cancel() — and prints no document — when the user backs out", async () => {
+    const { calls, ui } = recorder();
+    const deps: AddDeps = { ...depsReturning([tracked("demo")]), promptScope: async () => null };
+    const { run, printed } = await runAddWithUI(
+      "o/demo",
+      { cwd: tmp(), home: tmp(), agent: ["claude-code"], env: {} },
+      { ui, term: tty, deps },
+    );
+    expect(run.cancelled).toBe(true);
+    expect(printed).toBe(true);
+    const framed = calls.filter((c) => !c.startsWith("spinner"));
+    expect(framed[0]).toBe("intro");
+    expect(framed[1]).toBe("cancel:Installation cancelled — nothing was installed.");
+    expect(framed).toHaveLength(2);
+  });
+
+  it("still shows the document before a failing outro", async () => {
+    const { calls, ui } = recorder();
+    const { run } = await runAddWithUI(
+      "o/bad",
+      { cwd: tmp(), home: tmp(), global: true, agent: ["claude-code"], env: {} },
+      { ui, term: tty, deps: depsReturning([{ name: "bad", raw: BROKEN, slug: "bad" }]) },
+    );
+    expect(run.exitCode).toBe(1);
+    const framed = calls.filter((c) => !c.startsWith("spinner"));
+    expect(framed[0]).toBe("intro");
+    expect(framed[1]).toContain("blocked");
+    expect(framed[2]).toBe("outro:Some skills were not installed.");
+  });
+
+  it("prints nothing itself when the run is not interactive", async () => {
+    const { calls, ui } = recorder();
+    const { run, printed } = await runAddWithUI(
+      "o/demo",
+      { cwd: tmp(), home: tmp(), global: true, yes: true, agent: ["claude-code"], env: {} },
+      { ui, term: { stdinTTY: false, stdoutTTY: false, env: {} }, deps: depsReturning([tracked("demo")]) },
+    );
+    expect(run.exitCode).toBe(0);
+    expect(printed).toBe(false);
+    expect(calls).toEqual([]);
   });
 });
 

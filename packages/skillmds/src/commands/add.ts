@@ -13,10 +13,11 @@ import { AGENTS, agentDir, agentSupportsGlobal, detectAgents } from "../agents.j
 import { installSkill } from "../installer.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
-import { detectHostAgent, isInteractive, nonInteractiveHint } from "../env.js";
+import { detectHostAgent, isInteractive, nonInteractiveHint, realTerminal } from "../env.js";
+import type { Terminal } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
 import { safeText } from "../sanitize.js";
-import { banner, renderInstallSummary } from "../ui.js";
+import { GLYPH, banner, renderInstallSummary } from "../ui.js";
 import type { PathCtx } from "../ui.js";
 
 export interface AddFlags {
@@ -105,18 +106,22 @@ export function looksLikeProject(dir: string): boolean {
 // human renderer is the only thing that ever colours or decorates it.
 // ---------------------------------------------------------------------------
 
-// "replaced" is a warning like any other in --json, but the human renderer
-// drops it: the install summary already prints that line under the skill.
-interface Notice { text: string; style: "info" | "warn" | "skip" | "replaced" }
+// `style` decides how a notice is drawn; `suppressInSummary` decides whether
+// the human renderer draws it at all. The "replaced" remark is a warning like
+// any other in --json's warnings[], but the install summary already prints that
+// line under the skill, so the human path skips the duplicate.
+interface Notice { text: string; style: "info" | "warn" | "skip"; suppressInSummary?: boolean }
 const infoNotice = (text: string): Notice => ({ text, style: "info" });
 const warnNotice = (text: string): Notice => ({ text, style: "warn" });
 const skipNotice = (text: string): Notice => ({ text, style: "skip" });
-const replacedNotice = (text: string): Notice => ({ text, style: "replaced" });
+const replacedNotice = (text: string): Notice => ({ text, style: "warn", suppressInSummary: true });
 
 function noticeLine(n: Notice): string {
-  if (n.style === "info") return pc.dim(`ℹ ${n.text}`);
-  if (n.style === "skip") return pc.dim(`↷ ${n.text}`);
-  return pc.yellow(`⚠ ${n.text}`);
+  switch (n.style) {
+    case "info": return pc.dim(`${GLYPH.info} ${n.text}`);
+    case "skip": return pc.dim(`${GLYPH.skip} ${n.text}`);
+    case "warn": return pc.yellow(`${GLYPH.warn} ${n.text}`);
+  }
 }
 
 /** Same choice the `skills` CLI offers: Project vs Global, before anything is written. */
@@ -430,7 +435,7 @@ function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
       const human = [
         ...(outcome.notices ?? []).map(noticeLine),
         ...(outcome.blocked?.length
-          ? outcome.blocked.map((b) => pc.red(`✗ ${b.name} blocked — ${b.reason}`))
+          ? outcome.blocked.map((b) => pc.red(`${GLYPH.blocked} ${b.name} blocked — ${b.reason}`))
           : [pc.red(outcome.error)]),
       ].join("\n");
       return { written: [], blocked: outcome.blocked ?? [], exitCode: 1, output: json ? JSON.stringify(doc, null, 2) : human };
@@ -456,7 +461,7 @@ function renderHuman(notices: Notice[], records: CandidateRecord[], paths: PathC
     }, paths));
     // The summary already carries the skipped agents and the "replaced" line;
     // everything else the install had to say still gets its own notice line.
-    for (const n of r.notices) if (n.style !== "replaced") lines.push(noticeLine(n));
+    for (const n of r.notices) if (!n.suppressInSummary) lines.push(noticeLine(n));
   }
   return lines.join("\n");
 }
@@ -548,7 +553,7 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
       kind: "blocked",
       name: c.name,
       reason: `lint errors: ${result.diagnostics.filter((d) => d.severity === "error").map((d) => d.id).join(", ")}`,
-      message: `✗ ${c.name} blocked — failed lint (use --skip-lint to override)`,
+      message: `${GLYPH.blocked} ${c.name} blocked — failed lint (use --skip-lint to override)`,
     };
   }
   // --deny is opt-in: only blocks when the user explicitly asks to exclude a
@@ -559,7 +564,7 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
       kind: "blocked",
       name: c.name,
       reason: `denied security flags: ${deniedFlags.join(", ")}`,
-      message: `✗ ${c.name} blocked — you passed --deny ${deniedFlags.join(", ")}`,
+      message: `${GLYPH.blocked} ${c.name} blocked — you passed --deny ${deniedFlags.join(", ")}`,
     };
   }
 
@@ -579,7 +584,7 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
     });
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    return { kind: "blocked", name: c.name, reason, message: `✗ ${c.name} — ${reason}` };
+    return { kind: "blocked", name: c.name, reason, message: `${GLYPH.blocked} ${c.name} — ${reason}` };
   }
 
   const notices: Notice[] = [];
@@ -673,31 +678,77 @@ export function addCommand(): Command {
     .option("--deny <flags...>", "refuse skills carrying any of these security flags (opt-in)")
     .action(async (source: string, opts: AddFlags & { copy?: boolean }, cmd: Command) => {
       const merged = addFlags(opts, cmd.parent?.opts() as AddFlags | undefined);
-      const run = await runAddWithUI(source, merged);
-      // A failure belongs on stderr: a human piping stdout somewhere still sees
-      // why nothing was installed instead of losing it into the pipe.
-      if (run.exitCode === 1 && !merged.json) console.error(run.output);
-      else console.log(run.output);
+      const { run, printed } = await runAddWithUI(source, merged);
+      // On the interactive path the document is already inside the clack frame;
+      // printing it again here would repeat the whole summary below the box.
+      if (!printed) {
+        // A failure belongs on stderr: a human piping stdout somewhere still
+        // sees why nothing was installed instead of losing it into the pipe.
+        if (run.exitCode === 1 && !merged.json) console.error(run.output);
+        else console.log(run.output);
+      }
       process.exitCode = run.exitCode;
     });
+}
+
+/** The slice of clack `runAddWithUI` drives. Injectable so the frame's ORDER —
+ *  the thing that decides whether the install document lands inside the box —
+ *  is testable without a terminal. */
+export interface AddUI {
+  intro: (message: string) => void;
+  spinner: () => { start: (message?: string) => void; stop: (message?: string) => void };
+  message: (message: string) => void;
+  outro: (message: string) => void;
+  cancel: (message: string) => void;
+}
+
+const clackUI: AddUI = {
+  intro: (m) => p.intro(m),
+  spinner: () => p.spinner(),
+  message: (m) => p.log.message(m),
+  outro: (m) => p.outro(m),
+  cancel: (m) => p.cancel(m),
+};
+
+export interface AddUIOptions {
+  /** Terminal-drawing calls. Defaults to clack. */
+  ui?: AddUI;
+  /** Where we're running. Defaults to the real process streams and env. */
+  term?: Terminal;
+  /** Resolver/telemetry deps. Defaults to the real ones built from `flags`. */
+  deps?: AddDeps;
 }
 
 /**
  * runAdd() is print-free on purpose — it returns a document. This is the one
  * place that dresses it up: on a real terminal the run is framed by clack
- * (intro, a spinner while the source is resolved, an outro that says what to do
- * next). Piped, -y and --json runs get the plain document and nothing else.
+ * (intro, a spinner while the source is resolved, the install document, then an
+ * outro that says what to do next). Piped, -y and --json runs get the plain
+ * document back with `printed: false` and the caller prints it.
+ *
+ * `printed` says whether this function already put `run.output` on screen —
+ * without it the caller would print the summary a second time, outside the box.
  */
-async function runAddWithUI(source: string, flags: AddFlags): Promise<AddResult> {
-  const term = { stdinTTY: Boolean(process.stdin.isTTY), stdoutTTY: Boolean(process.stdout.isTTY), env: flags.env ?? process.env };
-  if (!isInteractive(flags, term)) return runAdd(source, flags);
-  const base = makeDefaultDeps(flags);
-  p.intro(banner());
+export async function runAddWithUI(
+  source: string,
+  flags: AddFlags,
+  opts: AddUIOptions = {},
+): Promise<{ run: AddResult; printed: boolean }> {
+  const term: Terminal = opts.term ?? { ...realTerminal(), env: flags.env ?? process.env };
+  const base = opts.deps ?? makeDefaultDeps(flags);
+  if (!isInteractive(flags, term)) return { run: await runAdd(source, flags, base), printed: false };
+  const ui = opts.ui ?? clackUI;
+  ui.intro(banner());
   try {
     const run = await runAdd(source, flags, {
+      // NOTE: spreading `base` reads makeDefaultDeps()'s promptScope/promptAgents
+      // getters right here, freezing their values for this run. That is exactly
+      // what we want (interactivity is decided once, up front), but it does mean
+      // a getter added to AddDeps later stops being lazy the moment it crosses
+      // this spread.
       ...base,
       resolve: async (arg, f) => {
-        const s = p.spinner();
+        const s = ui.spinner();
         s.start(`Resolving ${arg}`);
         try {
           const c = await base.resolve(arg, f);
@@ -709,17 +760,22 @@ async function runAddWithUI(source: string, flags: AddFlags): Promise<AddResult>
         }
       },
     });
-    // A cancelled run already printed clack's own "cancelled" frame.
-    if (!run.cancelled) {
-      p.outro(run.exitCode === 0
-        ? `Done. Run ${pc.cyan("skillmd list")} to see everything installed.`
-        : pc.red("Some skills were not installed."));
+    // A cancelled run has nothing to report — close the frame with clack's own
+    // cancel bar instead of printing a document that just says "cancelled".
+    if (run.cancelled) {
+      ui.cancel("Installation cancelled — nothing was installed.");
+      return { run, printed: true };
     }
-    return run;
+    // The document goes INSIDE the frame, before the outro closes it.
+    ui.message(run.output);
+    ui.outro(run.exitCode === 0
+      ? `Done. Run ${pc.cyan("skillmd list")} to see everything installed.`
+      : pc.red("Some skills were not installed."));
+    return { run, printed: true };
   } catch (e) {
     // Close the clack frame before the top-level handler prints the message,
     // so the error doesn't land inside a half-drawn box.
-    p.outro(pc.red("Nothing was installed."));
+    ui.outro(pc.red("Nothing was installed."));
     throw e;
   }
 }
