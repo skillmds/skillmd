@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
+import pc from "picocolors";
 import { lintCommand } from "./commands/lint.js";
 import { scanCommand } from "./commands/scan.js";
 import { rulesCommand } from "./commands/rules.js";
@@ -27,8 +28,18 @@ const program = new Command("skillmd")
   .version(version)
   .description("Lint, validate, and install Agent Skills from the SkillMD registry.")
   .option("--json", "machine-readable output")
-  .option("--token <token>", "SkillMD personal access token")
-  .option("--api <url>", "override the registry API base URL");
+  .option("--token <token>", "personal access token (prefer `skillmd login` or SKILLMD_TOKEN — command-line tokens show up in process lists)")
+  .option("--api <url>", "override the registry API base URL")
+  .option("--insecure-http", "allow an http:// --api base (local development only)");
+
+// A token on the command line lands in shell history and in every `ps` listing
+// on the machine. Warn once, on a terminal only, so piped/JSON output stays clean.
+program.hook("preAction", (thisCmd) => {
+  const opts = thisCmd.opts() as { token?: string };
+  if (opts.token && process.stdout.isTTY) {
+    console.error(pc.yellow("⚠ --token is visible in your shell history and process list; prefer `skillmd login` or SKILLMD_TOKEN."));
+  }
+});
 
 // Quality commands.
 program.addCommand(lintCommand());
