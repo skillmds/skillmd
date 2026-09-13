@@ -9,12 +9,13 @@ import { parseSkillMd } from "@skillmds/core";
 import { listInstalled } from "../installer.js";
 import type { InstalledSkillInfo } from "../installer.js";
 import { safeText } from "../sanitize.js";
+import { scopesFor } from "../env.js";
 
 export interface ListFlags { global?: boolean; project?: boolean; agent?: string[]; json?: boolean; cwd?: string; home?: string }
 export interface ListItem extends InstalledSkillInfo { description: string }
 
 export function runList(flags: ListFlags = {}): { items: ListItem[]; output: string } {
-  const scopes = flags.global && !flags.project ? [true] : flags.project && !flags.global ? [false] : [false, true];
+  const scopes = scopesFor(flags);
   let items: ListItem[] = [];
   for (const global of scopes) {
     for (const s of listInstalled({ global, cwd: flags.cwd, home: flags.home })) {

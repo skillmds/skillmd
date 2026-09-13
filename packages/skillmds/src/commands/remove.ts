@@ -2,14 +2,15 @@
 // and the lock entry. `-a` peels off one agent instead and keeps the canonical
 // copy alive while any other agent still points at it.
 import { Command } from "commander";
-import { existsSync, rmSync, lstatSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { agentDir } from "../agents.js";
-import { listInstalled, uninstallSkill } from "../installer.js";
+import { agentDir, canonicalDir } from "../agents.js";
+import type { ScopeOptions } from "../agents.js";
+import { isSkillDirOrLink, listInstalled, uninstallSkill } from "../installer.js";
 import { readLock, upsertEntry } from "../lock.js";
-import { isInteractive, nonInteractiveHint } from "../env.js";
+import { isInteractive, nonInteractiveHint, scopesFor } from "../env.js";
 
 export interface RemoveFlags { global?: boolean; project?: boolean; agent?: string[]; all?: boolean; yes?: boolean; json?: boolean; cwd?: string; home?: string }
 export interface RemoveDeps {
@@ -23,81 +24,127 @@ const defaultDeps = (flags: RemoveFlags): RemoveDeps => isInteractive(flags) ? {
   pick: async ({ names }) => { const a = await p.multiselect({ message: "Which skills do you want to remove?", options: names.map((n) => ({ value: n, label: n })), required: true }); return p.isCancel(a) ? null : (a as string[]); },
 } : {};
 
-/** The installer's rule, mirrored: a path is ours to delete only if it is a
- *  link or a directory that actually holds a SKILL.md. Anything else under an
- *  agent dir is the user's data, never ours. */
-function isSkillPath(pth: string): boolean {
-  try {
-    const st = lstatSync(pth);
-    return st.isSymbolicLink() || (st.isDirectory() && existsSync(join(pth, "SKILL.md")));
-  } catch { return false; }
+/** Every return path is one document in --json mode: the human lines never leak
+ *  into stdout that a caller is parsing. */
+function finish(flags: RemoveFlags, result: RemoveResult, doc: unknown): RemoveResult {
+  return flags.json ? { ...result, output: JSON.stringify(doc, null, 2) } : result;
 }
 
-export async function runRemove(names: string[], flags: RemoveFlags, deps: RemoveDeps = defaultDeps(flags)): Promise<RemoveResult> {
-  const scope = { global: Boolean(flags.global), cwd: flags.cwd, home: flags.home };
-  const lines: string[] = [];
-  if (flags.all && names.length) return { removed: [], exitCode: 1, output: pc.red("--all cannot be combined with skill names") };
+const scopeLabel = (scope: ScopeOptions): "global" | "project" => scope.global ? "global" : "project";
 
-  const installed = listInstalled(scope);
+export async function runRemove(names: string[], flags: RemoveFlags, deps: RemoveDeps = defaultDeps(flags)): Promise<RemoveResult> {
+  const scopes: ScopeOptions[] = scopesFor(flags).map((global) => ({ global, cwd: flags.cwd, home: flags.home }));
+  const where = scopes.map(scopeLabel).join(" and ");
+  const lines: string[] = [];
+  if (flags.all && names.length) {
+    const error = "--all cannot be combined with skill names";
+    return finish(flags, { removed: [], exitCode: 1, output: pc.red(error) }, { ok: false, error });
+  }
+
+  const perScope = scopes.map((scope) => ({ scope, installed: listInstalled(scope) }));
+  const allNames = [...new Set(perScope.flatMap((s) => s.installed.map((i) => i.name)))];
   let targets = names;
-  if (flags.all) targets = installed.map((s) => s.name);
+  if (flags.all) targets = allNames;
   else if (targets.length === 0) {
-    if (!deps.pick) return { removed: [], exitCode: 1, output: pc.red("Give one or more skill names, or --all. ") + pc.dim(nonInteractiveHint("skill names and -y")) };
-    if (installed.length === 0) return { removed: [], exitCode: 1, output: pc.dim("No installed skills found in this scope.") };
-    const picked = await deps.pick({ names: installed.map((s) => s.name) });
-    if (!picked) return { removed: [], exitCode: 0, cancelled: true, output: pc.dim("Nothing removed.") };
+    if (!deps.pick) {
+      const error = "Give one or more skill names, or --all.";
+      return finish(flags, { removed: [], exitCode: 1, output: pc.red(`${error} `) + pc.dim(nonInteractiveHint("skill names and -y")) }, { ok: false, error });
+    }
+    if (allNames.length === 0) {
+      const error = `No installed skills found in ${where} scope.`;
+      return finish(flags, { removed: [], exitCode: 1, output: pc.dim(error) }, { ok: false, error });
+    }
+    const picked = await deps.pick({ names: allNames });
+    if (!picked) return finish(flags, { removed: [], exitCode: 0, cancelled: true, output: pc.dim("Nothing removed.") }, { ok: true, removed: [], cancelled: true });
     targets = picked;
   }
 
-  const known = targets.filter((n) => installed.some((s) => s.name === n));
+  const known = targets.filter((n) => allNames.includes(n));
   const missing = targets.filter((n) => !known.includes(n));
-  for (const n of missing) lines.push(pc.yellow(`- ${n} not installed (${scope.global ? "global" : "project"} scope)`));
-  if (known.length === 0) return { removed: [], exitCode: 1, output: lines.join("\n") };
+  for (const n of missing) lines.push(pc.yellow(`- ${n} not installed (${where} scope)`));
+  if (known.length === 0) {
+    const output = lines.join("\n");
+    return finish(flags, { removed: [], exitCode: 1, output }, { ok: false, error: `not installed: ${missing.join(", ")}`, missing });
+  }
 
   if (!flags.yes) {
     const what = flags.agent?.length ? `from ${flags.agent.join(", ")}` : "from every agent";
-    const ok = deps.confirm ? await deps.confirm(`Remove ${known.length} skill${known.length === 1 ? "" : "s"} (${known.join(", ")}) ${what}?`) : null;
-    if (ok === null) return { removed: [], exitCode: 1, output: pc.red(nonInteractiveHint("-y")) };
-    if (!ok) return { removed: [], exitCode: 0, cancelled: true, output: pc.dim("Nothing removed.") };
+    const ok = deps.confirm ? await deps.confirm(`Remove ${known.length} skill${known.length === 1 ? "" : "s"} (${known.join(", ")}) ${what} in ${where} scope?`) : null;
+    if (ok === null) {
+      const error = nonInteractiveHint("-y");
+      return finish(flags, { removed: [], exitCode: 1, output: pc.red(error) }, { ok: false, error });
+    }
+    if (!ok) return finish(flags, { removed: [], exitCode: 0, cancelled: true, output: pc.dim("Nothing removed.") }, { ok: true, removed: [], cancelled: true });
   }
 
   const removed: string[] = [];
+  const skipped: { skill: string; agent: string; scope: string; reason: string }[] = [];
+  let changed = 0;
   for (const name of known) {
-    if (flags.agent?.length) {
-      const lock = readLock(scope);
-      const entry = lock.skills[name];
-      for (const a of flags.agent) {
-        let pth: string;
-        try {
-          pth = join(agentDir(a, scope), name);
-        } catch (e) {
-          lines.push(pc.yellow(`- ${a}: ${e instanceof Error ? e.message : String(e)}`));
-          continue;
+    for (const { scope, installed } of perScope) {
+      if (!installed.some((s) => s.name === name)) continue;
+      const tag = scopes.length > 1 ? pc.dim(` [${scopeLabel(scope)}]`) : "";
+      if (flags.agent?.length) {
+        const lock = readLock({ global: Boolean(scope.global), cwd: scope.cwd, home: scope.home });
+        const entry = lock.skills[name];
+        const canonRoot = resolve(canonicalDir(scope));
+        let acted = false;
+        for (const a of flags.agent) {
+          let dir: string;
+          try {
+            dir = agentDir(a, scope);
+          } catch (e) {
+            lines.push(pc.yellow(`- ${a}: ${e instanceof Error ? e.message : String(e)}`));
+            continue;
+          }
+          // The canonical copy is the skill itself, not a link into an agent dir:
+          // deleting it here would take the skill away from every other agent.
+          if (resolve(dir) === canonRoot || entry?.mode[a] === "canonical") {
+            lines.push(pc.dim(`↷ ${name}: ${a} reads the canonical copy directly — unlinking is a no-op (use remove without -a to delete the skill)`));
+            skipped.push({ skill: name, agent: a, scope: scopeLabel(scope), reason: "reads the canonical copy directly" });
+            acted = true;
+            continue;
+          }
+          const pth = join(dir, name);
+          // rmSync on a junction/symlink unlinks it without touching the target.
+          if (isSkillDirOrLink(pth)) {
+            rmSync(pth, { recursive: true, force: true });
+            removed.push(pth);
+            acted = true;
+            lines.push(pc.green(`✓ removed ${name} from ${a}`) + tag);
+          }
         }
-        // rmSync on a junction/symlink unlinks it without touching the target.
-        if (isSkillPath(pth)) { rmSync(pth, { recursive: true, force: true }); removed.push(pth); lines.push(pc.green(`✓ removed ${name} from ${a}`)); }
+        if (!acted) lines.push(pc.yellow(`- ${name} is not linked into ${flags.agent.join(", ")}`) + tag);
+        if (entry) {
+          const left = entry.agents.filter((a) => !flags.agent!.includes(a));
+          if (left.length) upsertEntry({ global: Boolean(scope.global), cwd: scope.cwd, home: scope.home }, name, { ...entry, agents: left, mode: Object.fromEntries(Object.entries(entry.mode).filter(([a]) => left.includes(a))) });
+          else {
+            const r = uninstallSkill(name, scope);
+            removed.push(...r.removed);
+            lines.push(pc.dim(`  (no agents left — removed the canonical copy too)`));
+          }
+        }
+        if (acted) changed++;
+        continue;
       }
-      if (entry) {
-        const left = entry.agents.filter((a) => !flags.agent!.includes(a));
-        if (left.length) upsertEntry(scope, name, { ...entry, agents: left, mode: Object.fromEntries(Object.entries(entry.mode).filter(([a]) => left.includes(a))) });
-        else { const r = uninstallSkill(name, scope); removed.push(...r.removed); lines.push(pc.dim(`  (no agents left — removed the canonical copy too)`)); }
-      }
-      continue;
+      const r = uninstallSkill(name, scope);
+      removed.push(...r.removed);
+      changed++;
+      lines.push(pc.green(`✓ removed ${name}`) + tag + pc.dim(` (${r.removed.length} path${r.removed.length === 1 ? "" : "s"}${r.untracked ? ", untracked" : ""})`));
     }
-    const r = uninstallSkill(name, scope);
-    removed.push(...r.removed);
-    lines.push(pc.green(`✓ removed ${name}`) + pc.dim(` (${r.removed.length} path${r.removed.length === 1 ? "" : "s"}${r.untracked ? ", untracked" : ""})`));
   }
-  const exitCode: 0 | 1 = removed.length ? 0 : 1;
-  if (flags.json) return { removed, exitCode, output: JSON.stringify({ ok: exitCode === 0, removed, missing }, null, 2) };
-  return { removed, exitCode, output: lines.join("\n") };
+  const exitCode: 0 | 1 = changed ? 0 : 1;
+  const doc: Record<string, unknown> = { ok: exitCode === 0, removed, missing };
+  if (skipped.length) doc.skipped = skipped;
+  return finish(flags, { removed, exitCode, output: lines.join("\n") }, doc);
 }
 
 export function removeCommand(): Command {
   return new Command("remove").alias("rm")
     .description("Remove installed skills (links, canonical copy and lock entry)")
     .argument("[names...]", "skill names (omit to pick interactively)")
-    .option("-g, --global", "user-level scope (default: this project)")
+    .option("-g, --global", "only user-level skills")
+    .option("-p, --project", "only this project's skills")
     .option("-a, --agent <agents...>", "remove only from these agents")
     .option("--all", "remove every skill in the scope")
     .option("-y, --yes", "skip the confirmation")

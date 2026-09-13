@@ -60,6 +60,12 @@ export function createReporter(
   };
 }
 
+/** Which scopes does a -g/-p pair select? Neither (or both) means both, and
+ *  the order is stable: project first, then global. */
+export function scopesFor(flags: { global?: boolean; project?: boolean }): boolean[] {
+  return flags.global && !flags.project ? [true] : flags.project && !flags.global ? [false] : [false, true];
+}
+
 /** Message for a prompt that cannot be shown. Commands print it and exit 1. */
 export function nonInteractiveHint(flags: string): string {
   return `Interactive prompt required but stdin is not a terminal. Nothing was changed. Re-run with ${flags} to run non-interactively.`;

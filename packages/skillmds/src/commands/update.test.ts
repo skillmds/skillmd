@@ -2,8 +2,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runUpdate } from "./update.js";
+import { runUpdate, pickSkillTree, makeDefaultUpdateDeps } from "./update.js";
 import type { UpdateDeps } from "./update.js";
+import { gigetInput, parseSource } from "../sources.js";
+import type { SourceSpec } from "../sources.js";
 import { installSkill, digestOf } from "../installer.js";
 import { readLock } from "../lock.js";
 
@@ -80,5 +82,77 @@ describe("runUpdate", () => {
     const onlyP = deps({ "registry:o/p": v2, "registry:o/g": v2 });
     await runUpdate([], { cwd, home, yes: true, project: true }, onlyP);
     expect(onlyP.fetched).toEqual(["registry:o/p"]);
+  });
+  it("treats a registry pin with an unchanged commit_sha as up to date", async () => {
+    const home = tmp(); mkdirSync(join(home, ".claude"));
+    await installSkill({ name: "a", files: v1, source: "registry:o/a", commit_sha: "abc", scope: { global: true, home }, agents: ["claude-code"] });
+    const r = await runUpdate([], { global: true, home, yes: true }, { fetchLatest: async () => ({ files: v2, commit_sha: "abc" }) });
+    expect(r.updated).toEqual([]);
+    expect(r.output).toMatch(/a.*up to date/);
+    expect(readFileSync(join(home, ".agents", "skills", "a", "SKILL.md"), "utf8")).toContain("version one");
+  });
+  it("reports names that are not installed anywhere and exits 1", async () => {
+    const home = tmp(); mkdirSync(join(home, ".claude"));
+    await installSkill({ name: "a", files: v1, source: "registry:o/a", scope: { global: true, home }, agents: ["claude-code"] });
+    const r = await runUpdate(["nope"], { global: true, home, yes: true }, deps({}));
+    expect(r.exitCode).toBe(1);
+    expect(r.failed).toContain("nope");
+    expect(r.output).toMatch(/nope not installed/);
+  });
+  it("passes the installed name to fetchLatest", async () => {
+    const home = tmp(); mkdirSync(join(home, ".claude"));
+    await installSkill({ name: "a", files: v1, source: "registry:o/a", scope: { global: true, home }, agents: ["claude-code"] });
+    const seen: string[] = [];
+    await runUpdate([], { global: true, home, yes: true }, { fetchLatest: async (_s, _f, name) => { seen.push(name); return null; } });
+    expect(seen).toEqual(["a"]);
+  });
+});
+
+describe("pickSkillTree", () => {
+  const tree = [
+    { path: "README.md", contents: "r" },
+    { path: "skills/x/SKILL.md", contents: "x" },
+    { path: "skills/x/ref.md", contents: "xr" },
+    { path: "skills/y/SKILL.md", contents: "y" },
+  ];
+  it("returns the named skill's own directory with the prefix stripped", () => {
+    expect(pickSkillTree(tree, "x")?.map((f) => f.path)).toEqual(["SKILL.md", "ref.md"]);
+  });
+  it("falls back to the tree root when the root is itself a skill", () => {
+    const root = [{ path: "SKILL.md", contents: "s" }, { path: "ref.md", contents: "r" }];
+    expect(pickSkillTree(root, "x")?.map((f) => f.path)).toEqual(["SKILL.md", "ref.md"]);
+  });
+  it("returns null when nothing matches", () => {
+    expect(pickSkillTree(tree, "z")).toBeNull();
+  });
+});
+
+describe("makeDefaultUpdateDeps", () => {
+  it("resolves a github source to the skill's own directory", async () => {
+    const asked: string[] = [];
+    const d = makeDefaultUpdateDeps({
+      resolveTree: async (input: string) => {
+        asked.push(input);
+        return [
+          { path: "skills/x/SKILL.md", contents: Buffer.from("a") },
+          { path: "skills/x/ref.md", contents: Buffer.from("b") },
+          { path: "skills/other/SKILL.md", contents: Buffer.from("c") },
+        ];
+      },
+    });
+    const latest = await d.fetchLatest("github:o/r@x", {}, "x");
+    expect(asked).toEqual(["github:o/r"]);
+    expect(latest?.files.map((f) => f.path)).toEqual(["SKILL.md", "ref.md"]);
+  });
+  it("never reaches the network for a local source", async () => {
+    let called = 0;
+    const d = makeDefaultUpdateDeps({ resolveTree: async () => { called++; return []; } });
+    expect(await d.fetchLatest("local:/tmp/x", {}, "x")).toBeNull();
+    expect(called).toBe(0);
+  });
+  it("keeps a ref containing @ intact when building the giget input", () => {
+    const spec = parseSource("https://github.com/o/r/tree/feat@2/skills/x") as Extract<SourceSpec, { kind: "github" }>;
+    expect(spec.kind).toBe("github");
+    expect(gigetInput(spec)).toBe("github:o/r/skills/x#feat@2");
   });
 });

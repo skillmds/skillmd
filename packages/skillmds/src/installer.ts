@@ -93,7 +93,9 @@ export function defaultLink(target: string, linkPath: string): LinkMode {
   return "symlink";
 }
 
-function isSkillDirOrLink(p: string): boolean {
+/** A path is ours to delete only if it is a link or a directory that actually
+ *  holds a SKILL.md. Anything else under an agent dir is the user's data. */
+export function isSkillDirOrLink(p: string): boolean {
   try {
     const st = lstatSync(p);
     return st.isSymbolicLink() || (st.isDirectory() && existsSync(join(p, "SKILL.md")));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectHostAgent, isInteractive, createReporter } from "./env.js";
+import { detectHostAgent, isInteractive, createReporter, scopesFor } from "./env.js";
 
 describe("detectHostAgent", () => {
   it("recognises the agents that launch CLIs non-interactively", () => {
@@ -43,5 +43,14 @@ describe("createReporter", () => {
     r.result({ ok: true });
     expect(out).toEqual(["hello"]);
     expect(err).toEqual([]);
+  });
+});
+
+describe("scopesFor", () => {
+  it("defaults to both scopes and narrows with -g/-p", () => {
+    expect(scopesFor({})).toEqual([false, true]);
+    expect(scopesFor({ global: true })).toEqual([true]);
+    expect(scopesFor({ project: true })).toEqual([false]);
+    expect(scopesFor({ global: true, project: true })).toEqual([false, true]);
   });
 });
