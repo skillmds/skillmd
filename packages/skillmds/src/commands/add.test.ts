@@ -2,9 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAdd, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
-import type { AddCandidate, AddDeps } from "./add.js";
-import { RegistryError } from "../api.js";
+import { runAdd, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
+import type { AddCandidate, AddDeps, AddFlags } from "./add.js";
+import { IntegrityError, RegistryError } from "../api.js";
 import { readLock } from "../lock.js";
 
 const tmps: string[] = [];
@@ -385,7 +385,8 @@ describe("add on the installer", () => {
     const home = tmp();
     const r = await runAdd("o/pack", { cwd: tmp(), home, global: true, list: true, env: {} }, depsReturning([tracked("a"), tracked("b")]));
     expect(r.written).toHaveLength(0);
-    expect(r.output).toMatch(/a[\s\S]*b/);
+    expect(r.output).toContain("a");
+    expect(r.output).toContain("b");
     expect(existsSync(join(home, ".agents"))).toBe(false);
   });
 
@@ -423,5 +424,129 @@ describe("add on the installer", () => {
     expect(looksLikeProject(cwd)).toBe(true);
     const cwd2 = tmp(); mkdirSync(join(cwd2, ".kilocode"));
     expect(looksLikeProject(cwd2)).toBe(true);
+  });
+});
+
+describe("--json is a contract", () => {
+  const failing = (e: Error): AddDeps => ({ resolve: async () => { throw e; }, fireInstall: () => {} });
+  const jsonFlags = (): AddFlags => ({ cwd: tmp(), home: tmp(), global: true, yes: true, json: true, agent: ["claude-code"], env: {} });
+
+  it("turns an integrity failure into one JSON document", async () => {
+    const r = await runAdd("o/demo", jsonFlags(), failing(new IntegrityError("bad digest")));
+    expect(r.exitCode).toBe(1);
+    const doc = JSON.parse(r.output) as { ok: boolean; error: string; blocked: { name: string; reason: string }[] };
+    expect(doc.ok).toBe(false);
+    expect(doc.error).toContain("bad digest");
+    expect(doc.blocked[0]?.name).toBe("o/demo");
+  });
+
+  it("turns any other resolve failure into one JSON document", async () => {
+    const r = await runAdd("o/demo", jsonFlags(), failing(new Error("registry down")));
+    expect(r.exitCode).toBe(1);
+    const doc = JSON.parse(r.output) as { ok: boolean; error: string };
+    expect(doc.ok).toBe(false);
+    expect(doc.error).toContain("registry down");
+  });
+
+  it("still rethrows a resolve failure in human mode (the top-level handler prints it)", async () => {
+    const flags = { ...jsonFlags(), json: false };
+    await expect(runAdd("o/demo", flags, failing(new Error("registry down")))).rejects.toThrow("registry down");
+  });
+
+  it("carries human-only notices as plain-text warnings", async () => {
+    const home = tmp();
+    const r = await runAdd(
+      "o/p",
+      { cwd: home, home, global: true, yes: true, json: true, agent: ["claude-code"], env: {} },
+      depsReturning([{ name: "p", raw: VALID, slug: "p", pinMiss: true }]),
+    );
+    const doc = JSON.parse(r.output) as { ok: boolean; warnings: string[] };
+    expect(doc.ok).toBe(true);
+    expect(doc.warnings[0]).toMatch(/pinned commit/);
+    // Warnings are consumed by programs: plain text, never ANSI-coloured.
+    expect(doc.warnings[0]).not.toContain(String.fromCharCode(27));
+  });
+
+  it("--json --list emits a skills document", async () => {
+    const home = tmp();
+    const r = await runAdd("o/pack", { cwd: tmp(), home, global: true, list: true, json: true, env: {} }, depsReturning([tracked("a"), tracked("b")]));
+    expect(r.exitCode).toBe(0);
+    const doc = JSON.parse(r.output) as { ok: boolean; skills: { name: string; description: string }[] };
+    expect(doc.ok).toBe(true);
+    expect(doc.skills.map((s) => s.name)).toEqual(["a", "b"]);
+    expect(doc.skills[0]?.description).toContain("demo skill");
+    expect(existsSync(join(home, ".agents"))).toBe(false);
+  });
+});
+
+describe("provenance", () => {
+  it("records the parsed source when the resolver left a candidate unattributed", async () => {
+    const home = tmp();
+    const r = await runAdd(
+      "o/n",
+      { cwd: tmp(), home, global: true, yes: true, agent: ["claude-code"], env: {} },
+      depsReturning([{ name: "n", raw: VALID, slug: "n" }]),
+    );
+    expect(r.exitCode).toBe(0);
+    expect(readLock({ global: true, home }).skills.n?.source).toBe("registry:o/n");
+  });
+});
+
+describe("argWithRef", () => {
+  it("folds --ref back into a GitHub shorthand resolveSource can parse", () => {
+    expect(argWithRef("o/r/sub@skill", "v2")).toBe("github:o/r/sub#v2@skill");
+  });
+  it("leaves a local path exactly as the user typed it", () => {
+    expect(argWithRef("./local", "v2")).toBe("./local");
+  });
+  it("leaves an argument alone when no --ref was passed", () => {
+    expect(argWithRef("o/r/sub@skill")).toBe("o/r/sub@skill");
+  });
+});
+
+describe("--mode copy", () => {
+  it("copies into each agent dir instead of linking", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".claude"));
+    const r = await runAdd(
+      "o/demo",
+      { cwd: tmp(), home, global: true, yes: true, json: true, mode: "copy", agent: ["claude-code"], env: {} },
+      depsReturning([tracked("demo")]),
+    );
+    const doc = JSON.parse(r.output) as { installed: { targets: { agent: string; mode: string }[] }[] };
+    expect(doc.installed[0]?.targets.find((t) => t.agent === "claude-code")?.mode).toBe("copy");
+  });
+
+  it("the hidden --copy alias still means --mode copy, and says so in its description", () => {
+    const cmd = addCommand();
+    cmd.parseOptions(["--copy"]);
+    expect(addFlags(cmd.opts()).mode).toBe("copy");
+    const copy = cmd.options.find((o) => o.long === "--copy");
+    expect(copy?.description).toMatch(/--mode copy/);
+  });
+});
+
+describe("--force and untracked directories", () => {
+  it("refuses an untracked canonical dir without --force and replaces it with one", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".agents", "skills", "x"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "x", "SKILL.md"), VALID);
+    const base: AddFlags = { cwd: tmp(), home, global: true, yes: true, agent: ["claude-code"], env: {} };
+    const refused = await runAdd("o/x", base, depsReturning([tracked("x")]));
+    expect(refused.exitCode).toBe(1);
+    expect(refused.blocked[0]?.reason).toMatch(/not tracked/);
+    const ok = await runAdd("o/x", { ...base, force: true }, depsReturning([tracked("x")]));
+    expect(ok.exitCode).toBe(0);
+  });
+});
+
+describe("defaultNeedsPrompt in a real run", () => {
+  it("exits 1 with the -y hint when a scope decision has nobody to answer it", async () => {
+    // vitest runs with a piped stdin, so this is the real non-interactive path:
+    // no scope flag, no -y, no host agent, no prompt getter in deps.
+    const r = await runAdd("o/demo", { cwd: tmp(), home: tmp(), env: {} }, depsReturning([tracked("demo")]));
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toMatch(/-y/);
+    expect(r.written).toHaveLength(0);
   });
 });

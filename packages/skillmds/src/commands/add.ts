@@ -13,7 +13,6 @@ import { AGENTS, agentDir, agentSupportsGlobal, detectAgents } from "../agents.j
 import { installSkill } from "../installer.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
-import type { SourceSpec } from "../sources.js";
 import { detectHostAgent, isInteractive, nonInteractiveHint } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
 import { safeText } from "../sanitize.js";
@@ -98,7 +97,22 @@ export function looksLikeProject(dir: string): boolean {
   return AGENT_PROJECT_ROOTS.some((seg) => existsSync(join(dir, seg)));
 }
 
-const interactive = () => Boolean(process.stdin.isTTY && process.stdout.isTTY);
+// ---------------------------------------------------------------------------
+// Notices — every non-fatal remark this command can make. The text is written
+// once, in plain words: --json reports it verbatim in `warnings[]`, and the
+// human renderer is the only thing that ever colours or decorates it.
+// ---------------------------------------------------------------------------
+
+interface Notice { text: string; style: "info" | "warn" | "skip" }
+const infoNotice = (text: string): Notice => ({ text, style: "info" });
+const warnNotice = (text: string): Notice => ({ text, style: "warn" });
+const skipNotice = (text: string): Notice => ({ text, style: "skip" });
+
+function noticeLine(n: Notice): string {
+  if (n.style === "info") return pc.dim(`ℹ ${n.text}`);
+  if (n.style === "skip") return pc.dim(`↷ ${n.text}`);
+  return pc.yellow(`⚠ ${n.text}`);
+}
 
 /** Same choice the `skills` CLI offers: Project vs Global, before anything is written. */
 async function promptScopeInteractive(ctx: { cwd: string; suggestGlobal: boolean }): Promise<boolean | null> {
@@ -178,89 +192,114 @@ export function registryUnreachableError(arg: string, host: string, e: RegistryE
 
 /** resolveSource() re-parses the raw argument and knows nothing about --ref, so
  *  a ref given on the command line is folded back into a shorthand it can parse.
- *  Only done when --ref was actually passed: every other argument reaches
- *  resolveSource() exactly as the user typed it. */
-function argWithRef(spec: SourceSpec, original: string, ref?: string): string {
-  if (!ref || spec.kind !== "github") return original;
-  return `github:${spec.owner}/${spec.repo}${spec.subpath ? `/${spec.subpath}` : ""}#${ref}${spec.skill ? `@${spec.skill}` : ""}`;
+ *  Only done when --ref was actually passed, and only for GitHub sources: every
+ *  other argument reaches resolveSource() exactly as the user typed it. */
+export function argWithRef(arg: string, ref?: string): string {
+  if (!ref) return arg;
+  try {
+    const spec = parseSource(arg, { ref });
+    return spec.kind === "github" ? sourceId(spec) : arg;
+  } catch {
+    return arg;
+  }
 }
 
-const defaultDeps: AddDeps = {
-  async resolve(arg, flags) {
-    const spec = parseSource(arg, { ref: flags.ref });
-    const source = sourceId(spec);
-    // Everything that is not a bare owner/name is fetched directly; only a
-    // registry slug gets the registry-first treatment below.
-    if (spec.kind !== "slug") {
-      const rs = await resolveSource(argWithRef(spec, arg, flags.ref));
-      // A local skill is a directory on disk, so install the whole of it —
-      // references/, scripts/, assets — not just its SKILL.md. Remote sources
-      // (gist, GitHub) carry no `file` and still install SKILL.md only;
-      // resolveTree() is the path to giving them full trees as well.
-      return rs.map((r) => ({
-        name: r.slug, raw: r.raw, slug: r.slug, source,
-        ...(spec.kind === "local" && r.file ? { files: collectFiles(dirname(r.file), dirname(r.file)) } : {}),
-      }));
-    }
-    // Registry failure other than a 404. A 404 means "not a registry slug" and
-    // the GitHub fallback is the intended path; anything else (DNS failure,
-    // egress proxy 403, 5xx) means the registry couldn't be reached — remember
-    // it so the fallback's own failure doesn't mask the real cause behind a
-    // confusing GitHub 404.
-    let registryDown: RegistryError | null = null;
-    const { api, base: apiBase, token } = createClient(flags);
-    const registryHost = (() => { try { return new URL(apiBase).host; } catch { return "api.skillmd.com"; } })();
-    const registrySlug = `${spec.owner}/${spec.name}`;
-    try {
-      const skill = await api<RegistrySkill>(`/api/skills/${spec.owner}/${spec.name}`);
-      const skillName = skill.slug.split("/")[1] || spec.name;
-      const meta = {
-        name: skillName, slug: skillName, registrySlug, source, commit_sha: skill.commit_sha ?? undefined,
-        verified: skill.verified, type: skill.type, securityFlags: skill.security_flags,
-      };
-      if (skill.type === "pack") {
-        // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
-        // upstream deletion/force-push. Fall back to a live GitHub fetch.
-        const bundle = await fetchBundle(apiBase, registrySlug, token);
-        if (bundle && bundle.length) {
-          const sk = bundle.find((f) => f.path === "SKILL.md");
-          return [{ ...meta, raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill), files: bundle }];
-        }
-        const pack = await resolvePackFiles(skill);
-        if (pack) return [{ ...meta, ...pack }];
+/** Provenance for a candidate the resolver left unattributed: re-read the
+ *  argument the user typed instead of inventing a `local:` id for something
+ *  that is just as likely a registry slug or a GitHub repo. */
+function provenanceFor(arg: string): string {
+  try {
+    return sourceId(parseSource(arg));
+  } catch {
+    return `unknown:${arg}`;
+  }
+}
+
+/** The real deps. Built per run, because whether a prompt may be opened is a
+ *  property of *this* invocation's flags (-y, --json, host agent, TTY). */
+function makeDefaultDeps(flags: AddFlags): AddDeps {
+  const canPrompt = (): boolean => isInteractive(flags, {
+    stdinTTY: Boolean(process.stdin.isTTY),
+    stdoutTTY: Boolean(process.stdout.isTTY),
+    env: flags.env ?? process.env,
+  });
+  return {
+    async resolve(arg, f) {
+      const spec = parseSource(arg, { ref: f.ref });
+      const source = sourceId(spec);
+      // Everything that is not a bare owner/name is fetched directly; only a
+      // registry slug gets the registry-first treatment below.
+      if (spec.kind !== "slug") {
+        const rs = await resolveSource(argWithRef(arg, f.ref));
+        // A local skill is a directory on disk, so install the whole of it —
+        // references/, scripts/, assets — not just its SKILL.md. Remote sources
+        // (gist, GitHub) carry no `file` and still install SKILL.md only;
+        // resolveTree() is the path to giving them full trees as well.
+        return rs.map((r) => ({
+          name: r.slug, raw: r.raw, slug: r.slug, source,
+          ...(spec.kind === "local" && r.file ? { files: collectFiles(dirname(r.file), dirname(r.file)) } : {}),
+        }));
       }
-      return [{ ...meta, raw: skillMdFor(skill) }];
-    } catch (e) {
-      // A failed integrity check must never silently downgrade to an
-      // unverified GitHub fetch — surface it so the install hard-blocks.
-      if (e instanceof IntegrityError) throw e;
-      if (e instanceof RegistryError && e.status !== 404) registryDown = e;
-      // otherwise fall through to a git fetch
-    }
-    // The fallback is a GitHub fetch, so the provenance recorded is GitHub's —
-    // never the registry slug the user typed.
-    const ghSource = sourceId({ kind: "github", owner: spec.owner, repo: spec.name, display: arg });
-    try {
-      const rs = await resolveSource(arg);
-      const note = registryDown ? registryFallbackNote(registryHost) : undefined;
-      return rs.map((r) => ({ name: r.slug, raw: r.raw, slug: r.slug, source: ghSource, note }));
-    } catch (e) {
-      if (registryDown) throw registryUnreachableError(arg, registryHost, registryDown);
-      throw e;
-    }
-  },
-  get promptScope() { return interactive() ? promptScopeInteractive : undefined; },
-  get promptAgents() { return interactive() ? promptAgentsInteractive : undefined; },
-  fireInstall(registrySlug, flags) {
-    const { api } = createClient(flags);
-    const [owner, name] = registrySlug.split("/");
-    void api(`/api/skills/${owner}/${name}/install`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ via: "cli" }),
-    }).catch(() => {});
-  },
-};
+      // Registry failure other than a 404. A 404 means "not a registry slug" and
+      // the GitHub fallback is the intended path; anything else (DNS failure,
+      // egress proxy 403, 5xx) means the registry couldn't be reached — remember
+      // it so the fallback's own failure doesn't mask the real cause behind a
+      // confusing GitHub 404.
+      let registryDown: RegistryError | null = null;
+      const { api, base: apiBase, token } = createClient(f);
+      const registryHost = (() => { try { return new URL(apiBase).host; } catch { return "api.skillmd.com"; } })();
+      const registrySlug = `${spec.owner}/${spec.name}`;
+      try {
+        const skill = await api<RegistrySkill>(`/api/skills/${spec.owner}/${spec.name}`);
+        const skillName = skill.slug.split("/")[1] || spec.name;
+        const meta = {
+          name: skillName, slug: skillName, registrySlug, source, commit_sha: skill.commit_sha ?? undefined,
+          verified: skill.verified, type: skill.type, securityFlags: skill.security_flags,
+        };
+        if (skill.type === "pack") {
+          // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
+          // upstream deletion/force-push. Fall back to a live GitHub fetch.
+          const bundle = await fetchBundle(apiBase, registrySlug, token);
+          if (bundle && bundle.length) {
+            const sk = bundle.find((file) => file.path === "SKILL.md");
+            return [{ ...meta, raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill), files: bundle }];
+          }
+          const pack = await resolvePackFiles(skill);
+          if (pack) return [{ ...meta, ...pack }];
+        }
+        return [{ ...meta, raw: skillMdFor(skill) }];
+      } catch (e) {
+        // A failed integrity check must never silently downgrade to an
+        // unverified GitHub fetch — surface it so the install hard-blocks.
+        if (e instanceof IntegrityError) throw e;
+        if (e instanceof RegistryError && e.status !== 404) registryDown = e;
+        // otherwise fall through to a git fetch
+      }
+      // The fallback is a GitHub fetch, so the provenance recorded is GitHub's —
+      // never the registry slug the user typed.
+      const ghSource = sourceId({ kind: "github", owner: spec.owner, repo: spec.name, display: arg });
+      try {
+        const rs = await resolveSource(arg);
+        const note = registryDown ? registryFallbackNote(registryHost) : undefined;
+        return rs.map((r) => ({ name: r.slug, raw: r.raw, slug: r.slug, source: ghSource, note }));
+      } catch (e) {
+        if (registryDown) throw registryUnreachableError(arg, registryHost, registryDown);
+        throw e;
+      }
+    },
+    get promptScope() { return canPrompt() ? promptScopeInteractive : undefined; },
+    get promptAgents() { return canPrompt() ? promptAgentsInteractive : undefined; },
+    fireInstall(registrySlug, f) {
+      const { api } = createClient(f);
+      const [owner, name] = registrySlug.split("/");
+      void api(`/api/skills/${owner}/${name}/install`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ via: "cli" }),
+      }).catch(() => {});
+    },
+  };
+}
 
 export interface AddResult {
   written: { name: string; dir: string }[];
@@ -306,10 +345,13 @@ export async function resolveScope(flags: AddFlags, deps: AddDeps): Promise<{ sc
 }
 
 /**
- * A scope decision is needed and nobody can answer it: no scope flag, no -y, no
- * host agent to imply one, and no terminal to ask on. Guessing here is how a
- * piped or CI run ends up writing agent dirs somewhere nobody wanted them, so
- * the caller exits 1 with a hint instead.
+ * A scope decision is needed and nobody is there to answer it. Inside a host
+ * agent — or in CI — the scope is auto-detected rather than refused: an
+ * operator chose to run us unattended, and a hanging prompt would be worse
+ * than a sensible default. That leaves exactly one case: a run that looks
+ * interactive but is not — a human shell with stdin piped or redirected, no -y
+ * and no scope flag. Guessing there is how a piped run ends up writing agent
+ * dirs somewhere nobody wanted them, so the caller exits 1 with a hint.
  */
 export function defaultNeedsPrompt(flags: AddFlags): boolean {
   const env = flags.env ?? process.env;
@@ -319,8 +361,6 @@ export function defaultNeedsPrompt(flags: AddFlags): boolean {
   return !isInteractive(flags, { stdinTTY: Boolean(process.stdin.isTTY), stdoutTTY: Boolean(process.stdout.isTTY), env });
 }
 
-const CANCELLED: AddResult = { written: [], blocked: [], exitCode: 0, cancelled: true, output: pc.dim("Installation cancelled — nothing was installed.") };
-
 interface InstalledDoc {
   name: string;
   canonical: string;
@@ -329,78 +369,142 @@ interface InstalledDoc {
   digest: string;
 }
 
-export async function runAdd(arg: string, flags: AddFlags, deps: AddDeps = defaultDeps): Promise<AddResult> {
-  const env = flags.env ?? process.env;
-  let candidates: AddCandidate[];
-  try {
-    candidates = await deps.resolve(arg, flags);
-  } catch (e) {
-    // An integrity failure blocks the install cleanly (never writes the bytes).
-    if (e instanceof IntegrityError) {
+type CandidateRecord =
+  | { kind: "installed"; doc: InstalledDoc; score: number; securityFlags: string[]; notices: Notice[] }
+  | { kind: "blocked"; name: string; reason: string; message: string };
+
+type AddOutcome =
+  | { kind: "install"; scope: "global" | "project"; records: CandidateRecord[]; notices: Notice[]; rel: (abs: string) => string }
+  | { kind: "list"; skills: { name: string; description: string }[] }
+  | { kind: "fail"; error: string; blocked?: AddResult["blocked"]; notices?: Notice[] }
+  | { kind: "cancel" };
+
+const CANCELLED_TEXT = "installation cancelled — nothing was installed";
+
+/**
+ * The single exit of runAdd(). `--json` is a contract with a program: stdout
+ * carries exactly one document, success or failure, and every human-only
+ * remark is repeated there as plain text under `warnings`.
+ */
+function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
+  const json = Boolean(flags.json);
+  switch (outcome.kind) {
+    case "install": {
+      const installed = outcome.records.flatMap((r) => (r.kind === "installed" ? [r.doc] : []));
+      const blocked = outcome.records.flatMap((r) => (r.kind === "blocked" ? [{ name: r.name, reason: r.reason }] : []));
+      const written = installed.flatMap((d) => d.targets.map((t) => ({ name: d.name, dir: t.path })));
+      const warnings = [
+        ...outcome.notices,
+        ...outcome.records.flatMap((r) => (r.kind === "installed" ? r.notices : [])),
+      ].map((n) => n.text);
+      const exitCode: 0 | 1 = blocked.length > 0 || installed.length === 0 ? 1 : 0;
+      const doc = { ok: exitCode === 0, scope: outcome.scope, installed, blocked, warnings };
       return {
-        written: [],
-        blocked: [{ name: arg, reason: e.message }],
-        exitCode: 1,
-        output: pc.red(`✗ ${arg} blocked — ${e.message}`),
+        written, blocked, exitCode,
+        output: json ? JSON.stringify(doc, null, 2) : renderHuman(outcome.notices, outcome.records, outcome.rel),
       };
     }
-    throw e;
+    case "list": {
+      const human = outcome.skills.length
+        ? outcome.skills.map((s) => `${pc.bold(s.name)}  ${pc.dim(s.description)}`).join("\n")
+        : "No skills found.";
+      return { written: [], blocked: [], exitCode: 0, output: json ? JSON.stringify({ ok: true, skills: outcome.skills }, null, 2) : human };
+    }
+    case "cancel": {
+      const doc = { ok: false, error: CANCELLED_TEXT };
+      return {
+        written: [], blocked: [], exitCode: 0, cancelled: true,
+        output: json ? JSON.stringify(doc, null, 2) : pc.dim("Installation cancelled — nothing was installed."),
+      };
+    }
+    case "fail": {
+      const warnings = (outcome.notices ?? []).map((n) => n.text);
+      const doc: { ok: false; error: string; blocked?: AddResult["blocked"]; warnings?: string[] } = { ok: false, error: outcome.error };
+      if (outcome.blocked?.length) doc.blocked = outcome.blocked;
+      if (warnings.length) doc.warnings = warnings;
+      const human = [
+        ...(outcome.notices ?? []).map(noticeLine),
+        ...(outcome.blocked?.length
+          ? outcome.blocked.map((b) => pc.red(`✗ ${b.name} blocked — ${b.reason}`))
+          : [pc.red(outcome.error)]),
+      ].join("\n");
+      return { written: [], blocked: outcome.blocked ?? [], exitCode: 1, output: json ? JSON.stringify(doc, null, 2) : human };
+    }
   }
-  if (flags.skill?.length) candidates = candidates.filter((c) => flags.skill!.includes(c.name) || flags.skill!.includes("*"));
+}
 
+/** The only place that turns a finished run into terminal text. */
+function renderHuman(notices: Notice[], records: CandidateRecord[], rel: (abs: string) => string): string {
+  const lines = notices.map(noticeLine);
+  for (const r of records) {
+    if (r.kind === "blocked") { lines.push(pc.red(r.message)); continue; }
+    const { doc } = r;
+    lines.push(`${pc.green("✓")} ${pc.bold(doc.name)}  ${pc.dim(`score ${r.score}`)}${r.securityFlags.length ? `  ${pc.yellow(r.securityFlags.join(", "))}` : ""}`);
+    // Align the agent column to the widest agent actually written to, not to a
+    // constant wide enough for the longest agent id that exists.
+    const width = doc.targets.length ? Math.max(...doc.targets.map((t) => t.agent.length)) : 0;
+    for (const t of doc.targets) lines.push(`  ${t.agent.padEnd(width)} ${rel(t.path)} ${pc.dim(t.mode)}`);
+    for (const s of doc.skipped) lines.push(pc.dim(`  ↷ ${s.agent}: ${s.reason}`));
+    for (const n of r.notices) lines.push(noticeLine(n));
+  }
+  return lines.join("\n");
+}
+
+/** Ask the deps what the argument contains, then narrow it with --skill. */
+async function resolveCandidates(arg: string, flags: AddFlags, deps: AddDeps): Promise<AddCandidate[]> {
+  const candidates = await deps.resolve(arg, flags);
+  if (!flags.skill?.length) return candidates;
+  return candidates.filter((c) => flags.skill!.includes(c.name) || flags.skill!.includes("*"));
+}
+
+/** Everything that ends a run before a single byte is written. Returns the
+ *  finished result, or null to carry on with the install. */
+function gate(flags: AddFlags, deps: AddDeps, candidates: AddCandidate[]): AddResult | null {
+  if (flags.list) {
+    return finish(flags, {
+      kind: "list",
+      skills: candidates.map((c) => {
+        const parsed = parseSkillMd(c.raw);
+        const description = "error" in parsed ? `(invalid SKILL.md — ${parsed.error})` : parsed.description;
+        return { name: c.name, description: safeText(description, 80) };
+      }),
+    });
+  }
   // --json is a contract with a program: stdout carries one document and no
   // prompt can ever be shown, so the scope must be stated rather than guessed.
   if (flags.json && !flags.yes) {
-    return {
-      written: [], blocked: [], exitCode: 1,
-      output: JSON.stringify({ ok: false, error: "--json requires -y (no prompts can be shown in JSON mode)" }),
-    };
+    return finish(flags, { kind: "fail", error: "--json requires -y (no prompts can be shown in JSON mode)" });
   }
   // An injected promptScope (tests, callers that drive their own UI) counts as
   // "someone can answer", whatever the real stdin looks like.
   if (deps.needsPrompt ?? (!deps.promptScope && defaultNeedsPrompt(flags))) {
-    return {
-      written: [], blocked: [], exitCode: 1,
-      output: pc.red(nonInteractiveHint("-y (auto-detects the scope) or -g / -p")),
-    };
+    return finish(flags, { kind: "fail", error: nonInteractiveHint("-y (auto-detects the scope) or -g / -p") });
   }
+  return null;
+}
 
-  if (flags.list) {
-    const preview = candidates.map((c) => {
-      const parsed = parseSkillMd(c.raw);
-      const desc = "error" in parsed ? `(invalid SKILL.md — ${parsed.error})` : parsed.description;
-      return `${pc.bold(c.name)}  ${pc.dim(safeText(desc, 80))}`;
-    });
-    return { written: [], blocked: [], exitCode: 0, output: preview.length ? preview.join("\n") : "No skills found." };
-  }
-
-  const deny = new Set(flags.deny ?? []);
-  const written: AddResult["written"] = [];
-  const blocked: AddResult["blocked"] = [];
-  const installed: InstalledDoc[] = [];
-  const lines: string[] = [];
-
-  const resolved = await resolveScope(flags, deps);
-  if (!resolved) return CANCELLED;
-  const scope = resolved.scope;
-  const isGlobal = scope.global;
-  if (resolved.note) lines.push(pc.dim(`ℹ ${resolved.note}`));
-
-  const detected = detectAgents(scope);
+/** Which agent dirs this install writes to. null = the user cancelled. */
+async function chooseTargets(
+  flags: AddFlags,
+  deps: AddDeps,
+  scope: Scope,
+  detected: string[],
+): Promise<{ targets: string[]; notices: Notice[] } | null> {
+  const notices: Notice[] = [];
   let targets = flags.agent?.length ? flags.agent : (detected.length ? detected : ["claude-code"]);
   // Project-only agents have no global dir at all — drop them before anything
   // asks agentDir() for one (it throws), and say why they were dropped.
-  if (isGlobal) {
+  if (scope.global) {
     const kept: string[] = [];
     for (const id of targets) {
       if (agentSupportsGlobal(id)) kept.push(id);
-      else lines.push(pc.dim(`↷ ${id}: project-only agent`));
+      else notices.push(skipNotice(`${id}: project-only agent`));
     }
     targets = kept;
   }
-  if (!flags.agent?.length && deps.promptAgents && !flags.yes && !flags.json && !detectHostAgent(env)) {
+  if (!flags.agent?.length && deps.promptAgents && !flags.yes && !flags.json && !detectHostAgent(flags.env ?? process.env)) {
     const picked = await deps.promptAgents({ detected: targets, dirFor: (id) => agentDir(id, scope) });
-    if (picked === null) return CANCELLED;
+    if (picked === null) return null;
     targets = picked;
     // Remember the pick for next time — but never from a test run, which points
     // `home` at a temp dir while readConfig/writeConfig use the real one.
@@ -408,82 +512,133 @@ export async function runAdd(arg: string, flags: AddFlags, deps: AddDeps = defau
       try { writeConfig({ ...readConfig(), lastAgents: picked }); } catch { /* remembering is best-effort */ }
     }
   }
+  return { targets, notices };
+}
 
-  const scopeRoot = isGlobal ? (flags.home ?? homedir()) : (flags.cwd ?? process.cwd());
+interface InstallContext {
+  arg: string;
+  flags: AddFlags;
+  deny: Set<string>;
+  scope: Scope;
+  targets: string[];
+  env: NodeJS.ProcessEnv;
+  deps: AddDeps;
+}
+
+/** Lint gate, --deny gate, then the write. Never throws: a failure becomes a
+ *  blocked record so the remaining candidates still get their turn. */
+async function installOne(c: AddCandidate, ctx: InstallContext): Promise<CandidateRecord> {
+  const result = lint(c.raw, { slug: c.slug });
+  const securityFlags = [...new Set([...result.security.flags, ...(c.securityFlags ?? [])])];
+  const deniedFlags = securityFlags.filter((f) => ctx.deny.has(f));
+
+  if (!ctx.flags.skipLint && !result.ok) {
+    return {
+      kind: "blocked",
+      name: c.name,
+      reason: `lint errors: ${result.diagnostics.filter((d) => d.severity === "error").map((d) => d.id).join(", ")}`,
+      message: `✗ ${c.name} blocked — failed lint (use --skip-lint to override)`,
+    };
+  }
+  // --deny is opt-in: only blocks when the user explicitly asks to exclude a
+  // flag. Verification status never blocks — any skill installs (flags are
+  // shown on the success line as information, not a gate).
+  if (deniedFlags.length) {
+    return {
+      kind: "blocked",
+      name: c.name,
+      reason: `denied security flags: ${deniedFlags.join(", ")}`,
+      message: `✗ ${c.name} blocked — you passed --deny ${deniedFlags.join(", ")}`,
+    };
+  }
+
+  const source = c.source ?? (c.registrySlug ? `registry:${c.registrySlug}` : provenanceFor(ctx.arg));
+  let out: InstallResult;
+  try {
+    out = await installSkill({
+      name: c.name,
+      files: c.files ?? [{ path: "SKILL.md", contents: c.raw }],
+      source,
+      commit_sha: c.commit_sha,
+      scope: ctx.scope,
+      agents: ctx.targets,
+      explicitAgents: Boolean(ctx.flags.agent?.length),
+      mode: ctx.flags.mode,
+      force: ctx.flags.force,
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    return { kind: "blocked", name: c.name, reason, message: `✗ ${c.name} — ${reason}` };
+  }
+
+  const notices: Notice[] = [];
+  if (out.replaced) notices.push(warnNotice(`${c.name}: replaced previous install (${out.replaced})`));
+  if (c.pinMiss) notices.push(warnNotice(`${c.name}: pinned commit unavailable upstream — fetched the source repo's default branch instead`));
+  if (c.note) notices.push(warnNotice(`${c.name}: ${c.note}`));
+  if (c.type === "pack" && !c.files) {
+    notices.push(warnNotice(`${c.name} is a pack but its asset files could not be fetched — only SKILL.md was installed. It may reference missing files.`));
+  }
+  // Install counts are a registry-side number, and opting out must be honoured
+  // before the request is built, not inside it.
+  if (c.registrySlug && !telemetryDisabled(ctx.env)) ctx.deps.fireInstall(c.registrySlug, ctx.flags);
+
+  return {
+    kind: "installed",
+    doc: { name: c.name, canonical: out.canonical, targets: out.targets, skipped: out.skipped, digest: out.digest },
+    score: result.score,
+    securityFlags,
+    notices,
+  };
+}
+
+export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Promise<AddResult> {
+  const d = deps ?? makeDefaultDeps(flags);
+  const env = flags.env ?? process.env;
+
+  let candidates: AddCandidate[];
+  try {
+    candidates = await resolveCandidates(arg, flags, d);
+  } catch (e) {
+    // An integrity failure blocks the install cleanly (never writes the bytes).
+    if (e instanceof IntegrityError) {
+      return finish(flags, { kind: "fail", error: e.message, blocked: [{ name: arg, reason: e.message }] });
+    }
+    // In JSON mode the caller gets the failure as the one document it was
+    // promised; in human mode the top-level handler is the better printer.
+    if (flags.json) return finish(flags, { kind: "fail", error: e instanceof Error ? e.message : String(e) });
+    throw e;
+  }
+
+  const early = gate(flags, d, candidates);
+  if (early) return early;
+
+  const resolved = await resolveScope(flags, d);
+  if (!resolved) return finish(flags, { kind: "cancel" });
+  const scope = resolved.scope;
+  const notices: Notice[] = resolved.note ? [infoNotice(resolved.note)] : [];
+
+  const chosen = await chooseTargets(flags, d, scope, detectAgents(scope));
+  if (!chosen) return finish(flags, { kind: "cancel" });
+  notices.push(...chosen.notices);
+
+  const ctx: InstallContext = { arg, flags, deny: new Set(flags.deny ?? []), scope, targets: chosen.targets, env, deps: d };
+  const records: CandidateRecord[] = [];
+  for (const c of candidates) records.push(await installOne(c, ctx));
+
+  const scopeRoot = scope.global ? (flags.home ?? homedir()) : (flags.cwd ?? process.cwd());
   const rel = (abs: string): string => {
     const r = relative(scopeRoot, abs);
     return r && !r.startsWith("..") ? r : abs;
   };
+  return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records, notices, rel });
+}
 
-  for (const c of candidates) {
-    const result = lint(c.raw, { slug: c.slug });
-    const allFlags = [...new Set([...result.security.flags, ...(c.securityFlags ?? [])])];
-    const deniedFlags = allFlags.filter((f) => deny.has(f));
-
-    if (!flags.skipLint && !result.ok) {
-      blocked.push({ name: c.name, reason: `lint errors: ${result.diagnostics.filter((d) => d.severity === "error").map((d) => d.id).join(", ")}` });
-      lines.push(pc.red(`✗ ${c.name} blocked — failed lint (use --skip-lint to override)`));
-      continue;
-    }
-    // --deny is opt-in: only blocks when the user explicitly asks to exclude a
-    // flag. Verification status never blocks — any skill installs (flags are
-    // shown on the success line as information, not a gate).
-    if (deniedFlags.length) {
-      blocked.push({ name: c.name, reason: `denied security flags: ${deniedFlags.join(", ")}` });
-      lines.push(pc.red(`✗ ${c.name} blocked — you passed --deny ${deniedFlags.join(", ")}`));
-      continue;
-    }
-
-    const source = c.source ?? (c.registrySlug ? `registry:${c.registrySlug}` : `local:${arg}`);
-    let out: InstallResult;
-    try {
-      out = await installSkill({
-        name: c.name,
-        files: c.files ?? [{ path: "SKILL.md", contents: c.raw }],
-        source,
-        commit_sha: c.commit_sha,
-        scope,
-        agents: targets,
-        explicitAgents: Boolean(flags.agent?.length),
-        mode: flags.mode,
-        force: flags.force,
-      });
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e);
-      blocked.push({ name: c.name, reason });
-      lines.push(pc.red(`✗ ${c.name} — ${reason}`));
-      continue;
-    }
-
-    lines.push(`${pc.green("✓")} ${pc.bold(c.name)}  ${pc.dim(`score ${result.score}`)}${allFlags.length ? `  ${pc.yellow(allFlags.join(", "))}` : ""}`);
-    for (const t of out.targets) {
-      written.push({ name: c.name, dir: t.path });
-      lines.push(`  ${t.agent.padEnd(14)} ${rel(t.path)} ${pc.dim(t.mode)}`);
-    }
-    for (const s of out.skipped) lines.push(pc.dim(`  ↷ ${s.agent}: ${s.reason}`));
-    if (out.replaced) lines.push(pc.yellow(`  ⚠ replaced previous install (${out.replaced})`));
-    installed.push({ name: c.name, canonical: out.canonical, targets: out.targets, skipped: out.skipped, digest: out.digest });
-
-    if (c.pinMiss) {
-      lines.push(pc.yellow(`⚠ ${c.name}: pinned commit unavailable upstream — fetched the source repo's default branch instead`));
-    }
-    if (c.note) {
-      lines.push(pc.yellow(`⚠ ${c.name}: ${c.note}`));
-    }
-    if (c.type === "pack" && !c.files) {
-      lines.push(pc.yellow(`⚠ ${c.name} is a pack but its asset files could not be fetched — only SKILL.md was installed. It may reference missing files.`));
-    }
-    // Install counts are a registry-side number, and opting out must be honoured
-    // before the request is built, not inside it.
-    if (c.registrySlug && !telemetryDisabled(env)) deps.fireInstall(c.registrySlug, flags);
-  }
-
-  const exitCode: 0 | 1 = blocked.length > 0 || installed.length === 0 ? 1 : 0;
-  if (flags.json) {
-    const doc = { ok: exitCode === 0, scope: isGlobal ? "global" : "project", installed, blocked };
-    return { written, blocked, exitCode, output: JSON.stringify(doc, null, 2) };
-  }
-  return { written, blocked, exitCode, output: lines.join("\n") };
+/** `--copy` is the deprecated spelling of `--mode copy`; fold the two together
+ *  here so the action body has a single notion of the mode. */
+export function addFlags(opts: AddFlags & { copy?: boolean }, parent?: AddFlags): AddFlags {
+  const merged: AddFlags = { ...parent, ...opts };
+  if (opts.copy) merged.mode = "copy";
+  return merged;
 }
 
 export function addCommand(): Command {
@@ -500,7 +655,7 @@ export function addCommand(): Command {
     .option("--force", "replace a skill installed from a different source, or an untracked directory")
     .option("--insecure-http", "allow an http:// --api base (local development)")
     // deprecated spelling of --mode copy, kept so older install snippets work.
-    .addOption(new Option("--copy").hideHelp())
+    .addOption(new Option("--copy", "alias of --mode copy").hideHelp())
     .option("-y, --yes", "skip prompts; scope is auto-detected (project if this folder looks like a project, else global)")
     // deprecated no-op: installs are no longer gated on verification. Kept so
     // older install snippets that pass it don't error.
@@ -508,10 +663,12 @@ export function addCommand(): Command {
     .option("--skip-lint", "install even if the skill fails lint")
     .option("--deny <flags...>", "refuse skills carrying any of these security flags (opt-in)")
     .action(async (source: string, opts: AddFlags & { copy?: boolean }, cmd: Command) => {
-      const merged: AddFlags = { ...cmd.parent?.opts(), ...opts };
-      if (opts.copy) merged.mode = "copy";
+      const merged = addFlags(opts, cmd.parent?.opts() as AddFlags | undefined);
       const run = await runAdd(source, merged);
-      console.log(run.output);
+      // A failure belongs on stderr: a human piping stdout somewhere still sees
+      // why nothing was installed instead of losing it into the pipe.
+      if (run.exitCode === 1 && !merged.json) console.error(run.output);
+      else console.log(run.output);
       process.exitCode = run.exitCode;
     });
 }
