@@ -1,7 +1,13 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { parseSkillMd } from "@skillmds/core";
-import { createClient, reconstructSkillMd, skillMdFor, fetchBundle, IntegrityError, RegistryError, isAllowedSourceUrl } from "./api.js";
+import { createClient, timedFetch, reconstructSkillMd, skillMdFor, fetchBundle, IntegrityError, RegistryError, isAllowedSourceUrl } from "./api.js";
+import { MAX_PACK_BYTES } from "./limits.js";
+
+// createClient resolves its base + token through config.ts, so every client
+// built here is handed empty sources: the developer's real ~/.skillmd/config.json
+// and process.env must never reach a test.
+const NO_SOURCES = { env: {}, config: {} } as const;
 
 const sha = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
@@ -62,11 +68,9 @@ describe("isAllowedSourceUrl", () => {
 });
 
 describe("api() error classification", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("tags HTTP failures with their status (proxy 403, registry 5xx)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 403, text: async () => "egress denied" })));
-    const { api } = createClient({ api: "https://api.test" });
+    const f = vi.fn(async () => ({ ok: false, status: 403, text: async () => "egress denied" })) as unknown as typeof fetch;
+    const { api } = createClient({ api: "https://api.test" }, { fetch: f, sources: NO_SOURCES });
     const err = await api("/api/skills/o/n").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RegistryError);
     expect((err as RegistryError).status).toBe(403);
@@ -74,12 +78,29 @@ describe("api() error classification", () => {
   });
 
   it("tags network-level failures without a status (DNS, refused connection)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND api.test") }); }));
-    const { api } = createClient({ api: "https://api.test" });
+    const f = vi.fn(async () => { throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND api.test") }); }) as unknown as typeof fetch;
+    const { api } = createClient({ api: "https://api.test" }, { fetch: f, sources: NO_SOURCES });
     const err = await api("/api/skills/o/n").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RegistryError);
     expect((err as RegistryError).status).toBeUndefined();
     expect((err as RegistryError).message).toContain("ENOTFOUND");
+  });
+
+  it("names the deadline when the request times out (bare TimeoutError)", async () => {
+    const f = (async () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); }) as unknown as typeof fetch;
+    const c = createClient({ api: "https://api.test" }, { fetch: f, sources: NO_SOURCES, timeoutMs: 5000 });
+    await expect(c.api("/x")).rejects.toThrow(/timed out after 5s/);
+  });
+
+  it("names the deadline when the TimeoutError arrives as a cause", async () => {
+    // undici wraps the abort: TypeError("fetch failed") { cause: TimeoutError }.
+    const f = (async () => {
+      const inner = new Error("The operation was aborted due to timeout");
+      inner.name = "TimeoutError";
+      throw new TypeError("fetch failed", { cause: inner });
+    }) as unknown as typeof fetch;
+    const c = createClient({ api: "https://api.test" }, { fetch: f, sources: NO_SOURCES, timeoutMs: 5000 });
+    await expect(c.api("/x")).rejects.toThrow(/timed out after 5s/);
   });
 });
 
@@ -142,5 +163,94 @@ describe("skillMdFor", () => {
       license: "MIT",
     };
     expect(skillMdFor(skill)).toBe(reconstructSkillMd(skill));
+  });
+});
+
+type FetchLike = typeof fetch;
+const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+describe("fetchBundle hard integrity + caps", () => {
+  it("verifies base64 files and refuses a mismatch", async () => {
+    const f: FetchLike = async () => jsonResponse({ files: [{ path: "a.txt", content_base64: Buffer.from("hi").toString("base64"), sha256: sha("nope") }] });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toBeInstanceOf(IntegrityError);
+  });
+  it("requires a sha256 for source_url files and verifies the fetched bytes", async () => {
+    const f: FetchLike = async (url) => {
+      if (String(url).includes("/bundle")) return jsonResponse({ files: [
+        { path: "SKILL.md", content_base64: Buffer.from("# s").toString("base64"), sha256: sha("# s") },
+        { path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("REF") },
+        { path: "nohash.md", source_url: "https://raw.githubusercontent.com/o/r/abc/nohash.md" },
+      ] });
+      return new Response("REF", { status: 200 });
+    };
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/nohash\.md.*no sha256/);
+  });
+  it("accepts a bundle whose url-delivered file matches its hash", async () => {
+    const f: FetchLike = async (url) => String(url).includes("/bundle")
+      ? jsonResponse({ files: [{ path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("REF") }] })
+      : new Response("REF", { status: 200 });
+    const out = await fetchBundle("https://api.test", "o/n", undefined, { fetch: f });
+    expect(out?.map((x) => x.path)).toEqual(["ref.md"]);
+  });
+  it("enforces the pack caps before returning", async () => {
+    const files = Array.from({ length: 201 }, (_, i) => ({ path: `f${i}.md`, content_base64: Buffer.from("x").toString("base64"), sha256: sha("x") }));
+    const f: FetchLike = async () => jsonResponse({ files });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/too large/);
+  });
+  it("enforces the byte cap on the decoded contents, not the file count", async () => {
+    // Two halves-plus-a-bit: each is under the cap on its own, together they blow it.
+    const half = Buffer.alloc(Math.floor(MAX_PACK_BYTES / 2) + 1024, "a");
+    const content_base64 = half.toString("base64");
+    const sha256 = createHash("sha256").update(half).digest("hex");
+    const files = [
+      { path: "a.bin", content_base64, sha256 },
+      { path: "b.bin", content_base64, sha256 },
+    ];
+    // A plain stand-in, not a real Response: serialising ~28MB of base64 to JSON
+    // only to parse it back would make this test needlessly slow.
+    const f = (async () => ({ ok: true, json: async () => ({ files }) })) as unknown as FetchLike;
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/too large/);
+  });
+  it("passes an abort signal to every fetch", async () => {
+    let sawSignal = false;
+    const f: FetchLike = async (_url, init) => { sawSignal = Boolean(init?.signal); return jsonResponse({ files: [] }); };
+    await fetchBundle("https://api.test", "o/n", undefined, { fetch: f });
+    expect(sawSignal).toBe(true);
+  });
+});
+
+describe("timedFetch", () => {
+  it("supplies a deadline signal when the caller has none", async () => {
+    let seen: AbortSignal | null | undefined;
+    const f: FetchLike = async (_u, init) => { seen = init?.signal; return jsonResponse({ ok: 1 }); };
+    await timedFetch(f, 1000)("https://api.test/x");
+    expect(seen).toBeInstanceOf(AbortSignal);
+  });
+
+  it("passes a caller-supplied signal through untouched", async () => {
+    const mySignal = new AbortController().signal;
+    let seen: AbortSignal | null | undefined;
+    const f: FetchLike = async (_u, init) => { seen = init?.signal; return jsonResponse({ ok: 1 }); };
+    await timedFetch(f, 1000)("https://api.test/x", { signal: mySignal });
+    expect(seen).toBe(mySignal);
+  });
+});
+
+describe("createClient", () => {
+  it("attaches a timeout signal and reports the effective host", async () => {
+    let sawSignal = false;
+    const f: FetchLike = async (_u, init) => { sawSignal = Boolean(init?.signal); return jsonResponse({ ok: 1 }); };
+    const c = createClient({ api: "https://api.test" }, { fetch: f, sources: NO_SOURCES });
+    await c.api("/x");
+    expect(sawSignal).toBe(true);
+    expect(c.host).toBe("api.test");
+    expect(c.isDefaultHost).toBe(false);
+  });
+
+  it("sends the stored token only to the host it is bound to", async () => {
+    const config = { token: "sk_1", tokenHost: "api.test" };
+    const f: FetchLike = async () => jsonResponse({ ok: 1 });
+    expect(createClient({ api: "https://api.test" }, { fetch: f, sources: { env: {}, config } }).hasToken).toBe(true);
+    expect(createClient({ api: "https://other.test" }, { fetch: f, sources: { env: {}, config } }).hasToken).toBe(false);
   });
 });

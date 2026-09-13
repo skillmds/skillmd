@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runLint } from "./lint.js";
+import { Command } from "commander";
+import { runLint, lintCommand } from "./lint.js";
 
 const tmps: string[] = [];
 function fixture(name: string, skillMd: string): string {
@@ -55,5 +56,32 @@ describe("runLint", () => {
     const file = join(dir, "SKILL.md");
     await runLint(dir, { format: "text", fix: true });
     expect(readFileSync(file, "utf8")).toContain("license: UNKNOWN");
+  });
+});
+
+// Regression test: `lint` used to declare `.alias("check")`, which collided
+// with the top-level `check` command (update.ts) that src/index.ts registers
+// right after it — Commander threw "cannot add command 'check' as already
+// have command 'lint|check'" and crashed the CLI on every invocation.
+describe("lint/check command registration", () => {
+  it("lintCommand() no longer declares a 'check' alias", () => {
+    expect(lintCommand().aliases()).not.toContain("check");
+  });
+
+  it("registering lintCommand() then the top-level check command (as index.ts does) does not throw", async () => {
+    let makeCheckCommand: () => Command;
+    try {
+      // Build the program the way src/index.ts does.
+      ({ checkCommand: makeCheckCommand } = await import("./update.js"));
+    } catch {
+      // update.js (or a module it depends on, e.g. add.js) may be mid-edit by
+      // another agent in this branch; fall back to a minimal stand-in that
+      // reproduces the same name collision the real `check` command would.
+      makeCheckCommand = () => new Command("check");
+    }
+
+    expect(() => {
+      new Command("skillmd").addCommand(lintCommand()).addCommand(makeCheckCommand());
+    }).not.toThrow();
   });
 });

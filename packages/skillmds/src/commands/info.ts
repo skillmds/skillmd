@@ -2,6 +2,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { createClient } from "../api.js";
 import type { RegistrySkill } from "../api.js";
+import { safeText } from "../sanitize.js";
 
 // Mirrors the JSON returned by GET /api/skills/:owner/:name (a superset of
 // RegistrySkill — that type only models the fields the installer needs to
@@ -35,15 +36,20 @@ export interface InfoResult {
   skill?: DetailSkill;
 }
 
+/** The one thing that talks to the network, injected so the command stays testable. */
+export interface InfoDeps {
+  api?: <T>(path: string) => Promise<T>;
+}
+
 /** Fetch and format registry details for a skill. Exported (like runAdd/runSearch)
  *  so tests can drive it without going through commander/process.exitCode. */
-export async function runInfo(slug: string, flags: InfoFlags): Promise<InfoResult> {
+export async function runInfo(slug: string, flags: InfoFlags, deps: InfoDeps = {}): Promise<InfoResult> {
   const [owner, name] = slug.split("/");
   if (!owner || !name || slug.split("/").length !== 2) {
     return { ok: false, exitCode: 1, output: pc.red("Expected owner/name, e.g. anthropic/pdf") };
   }
 
-  const { api } = createClient(flags);
+  const api = deps.api ?? createClient(flags).api;
   let s: DetailSkill;
   try {
     s = await api<DetailSkill>(`/api/skills/${owner}/${name}`);
@@ -61,24 +67,29 @@ export async function runInfo(slug: string, flags: InfoFlags): Promise<InfoResul
 
   if (flags.json) return { ok: true, exitCode: 0, output: JSON.stringify(s, null, 2), skill: s };
 
+  // Everything below is registry text. safeText() strips the escape sequences
+  // that would otherwise repaint the terminal, so it is applied to each string
+  // BEFORE picocolors wraps it (afterwards it would eat our own colour codes).
+  const slugTxt = safeText(s.slug, 200);
   const lines: string[] = [];
   lines.push(
-    `${pc.bold(s.slug)} ${pc.dim(`[${s.type ?? "single"}]`)} ${s.verified ? pc.green("✓ verified") : pc.yellow("unverified")}`,
+    `${pc.bold(slugTxt)} ${pc.dim(`[${safeText(s.type ?? "single", 40)}]`)} ${s.verified ? pc.green("✓ verified") : pc.yellow("unverified")}`,
   );
-  lines.push(`  ${s.description}`);
+  lines.push(`  ${safeText(s.description)}`);
   lines.push(
     pc.dim(
-      `  category: ${s.category ?? "-"} · rating: ${s.avg_rating != null ? s.avg_rating.toFixed(1) : "-"} (${s.rating_count ?? 0}) · installs: ${s.install_count ?? 0}`,
+      `  category: ${safeText(s.category ?? "-", 100) || "-"} · rating: ${s.avg_rating != null ? s.avg_rating.toFixed(1) : "-"} (${s.rating_count ?? 0}) · installs: ${s.install_count ?? 0}`,
     ),
   );
+  const securityFlags = (s.security_flags ?? []).map((f) => safeText(f, 60)).filter(Boolean);
   lines.push(
-    pc.dim(`  security: ${(s.security_flags ?? []).join(", ") || "unscanned"} · license: ${s.provenance?.license ?? s.license ?? "unknown"}`),
+    pc.dim(`  security: ${securityFlags.join(", ") || "unscanned"} · license: ${safeText(s.provenance?.license ?? s.license ?? "unknown", 100) || "unknown"}`),
   );
-  const sourceRepo = s.provenance?.source_repo ?? s.source_repo;
-  const commitSha = s.provenance?.commit_sha ?? s.commit_sha;
+  const sourceRepo = safeText(s.provenance?.source_repo ?? s.source_repo, 300);
+  const commitSha = safeText(s.provenance?.commit_sha ?? s.commit_sha, 100);
   if (sourceRepo) lines.push(pc.dim(`  source: ${sourceRepo}${commitSha ? ` @ ${commitSha.slice(0, 8)}` : ""}`));
-  lines.push(pc.dim(`  page: https://skillmd.com/skills/${s.slug}`));
-  lines.push(pc.dim(`  install: ${s.install?.cli ?? `npx skillmds add ${s.slug}`}`));
+  lines.push(pc.dim(`  page: https://skillmd.com/skills/${slugTxt}`));
+  lines.push(pc.dim(`  install: ${safeText(s.install?.cli, 300) || `npx skillmds add ${slugTxt}`}`));
 
   return { ok: true, exitCode: 0, output: lines.join("\n"), skill: s };
 }

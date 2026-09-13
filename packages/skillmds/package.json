@@ -1,6 +1,6 @@
 {
   "name": "skillmds",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "SkillMD for agents: the `skillmds` MCP server + the `skillmd` CLI (lint, scan, search, install, publish Agent Skills) from skillmd.com.",
   "license": "MIT",
   "author": "SkillMD",
@@ -60,8 +60,7 @@
     "@skillmds/core": "^1.0.0",
     "commander": "^12.1.0",
     "giget": "^3.3.0",
-    "picocolors": "^1.1.0",
-    "yaml": "^2.6.1"
+    "picocolors": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

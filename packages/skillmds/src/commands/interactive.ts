@@ -7,8 +7,11 @@ import { runSearch, formatStars, truncate } from "./search.js";
 import type { SearchItem } from "./search.js";
 import { runAdd } from "./add.js";
 import { initSkill } from "./init.js";
-import { installedSkills } from "../agents.js";
-import { parseSkillMd } from "@skillmds/core";
+import { runList } from "./list.js";
+import { runUpdate } from "./update.js";
+import { runRemove } from "./remove.js";
+import { banner } from "../ui.js";
+import { safeText } from "../sanitize.js";
 
 function bail(v: unknown): v is symbol {
   if (p.isCancel(v)) {
@@ -34,13 +37,16 @@ async function browseSearchResults(items: SearchItem[]): Promise<void> {
           // ANSI escapes and let soft-wrap break clack's frame accounting.
           const starsTxt = item.repo_stars != null ? ` ★${formatStars(item.repo_stars)}` : "";
           const checkTxt = item.verified ? " ✓" : "";
-          const plainLabel = `${item.slug}${starsTxt}${checkTxt}`;
-          const label = `${pc.bold(item.slug)}${starsTxt ? pc.dim(starsTxt) : ""}${checkTxt ? pc.green(checkTxt) : ""}`;
+          // Registry text: strip escapes before measuring or colouring it — an
+          // escape would both break the width accounting and repaint the frame.
+          const slugTxt = safeText(item.slug, 200);
+          const plainLabel = `${slugTxt}${starsTxt}${checkTxt}`;
+          const label = `${pc.bold(slugTxt)}${starsTxt ? pc.dim(starsTxt) : ""}${checkTxt ? pc.green(checkTxt) : ""}`;
           const hintWidth = Math.max(10, cols - plainLabel.length - 6);
           return {
             value: item.slug,
             label,
-            hint: truncate(item.description ?? "", hintWidth),
+            hint: truncate(safeText(item.description ?? ""), hintWidth),
           };
         }),
         { value: "__back", label: "← Back to menu" },
@@ -61,12 +67,15 @@ async function browseOneResult(item: SearchItem): Promise<void> {
   // Print the card once on entry; the loop below only re-renders the action
   // select so "Show page URL" and post-install status don't re-dump the note.
   const starsTxt = item.repo_stars != null ? `★ ${formatStars(item.repo_stars)} stars` : "";
+  const slugTxt = safeText(item.slug, 200);
+  // Every part of `meta` is derived from a number or a boolean, so only the
+  // description and the slug carry registry text into the card.
   const meta = [
     starsTxt,
     item.verified ? pc.green("✓ verified") : "unverified",
     item.type === "pack" ? "pack" : "",
   ].filter(Boolean).join(" · ");
-  p.note([item.description ?? "", pc.dim(meta)].join("\n"), item.slug);
+  p.note([safeText(item.description ?? ""), pc.dim(meta)].join("\n"), slugTxt);
 
   for (;;) {
     const action = await p.select({
@@ -81,15 +90,15 @@ async function browseOneResult(item: SearchItem): Promise<void> {
     if (p.isCancel(action) || action === "back") return;
 
     if (action === "url") {
-      p.log.message(pc.dim(`https://skillmd.com/skills/${item.slug}`));
+      p.log.message(pc.dim(`https://skillmd.com/skills/${slugTxt}`));
       continue;
     }
 
     // No spinner around runAdd: it may open its own clack confirm prompt for
     // unverified skills, and a live spinner garbles the terminal around prompts.
-    p.log.step(`Installing ${item.slug}…`);
+    p.log.step(`Installing ${slugTxt}…`);
     try {
-      const run = await runAdd(item.slug, action === "global" ? { global: true } : {});
+      const run = await runAdd(item.slug, action === "global" ? { global: true } : { project: true });
       console.log(run.output);
       if (run.exitCode === 0) p.log.success("Installed.");
       else p.log.warn("Not installed.");
@@ -101,7 +110,7 @@ async function browseOneResult(item: SearchItem): Promise<void> {
 }
 
 export async function runInteractive(): Promise<void> {
-  p.intro(pc.bgCyan(pc.black(" skillmd ")));
+  p.intro(banner());
 
   // Menu loops until Quit/cancel so one action doesn't silently end the session.
   for (;;) {
@@ -111,8 +120,11 @@ export async function runInteractive(): Promise<void> {
       { value: "lint", label: "Lint a skill", hint: "validate a SKILL.md" },
       { value: "scan", label: "Security scan", hint: "scripts, network, secrets" },
       { value: "search", label: "Search the registry" },
+      { value: "install", label: "Install a skill", hint: "registry slug, GitHub URL or local path" },
       { value: "init", label: "Create a new skill" },
       { value: "list", label: "List installed skills" },
+      { value: "update", label: "Update installed skills" },
+      { value: "remove", label: "Remove skills" },
       { value: "help", label: "Show all commands" },
       { value: "quit", label: "Quit" },
     ],
@@ -175,21 +187,45 @@ export async function runInteractive(): Promise<void> {
       }
       break;
     }
+    case "install": {
+      const src = await p.text({ message: "Skill source", placeholder: "owner/name, https://github.com/…, or ./path" });
+      if (bail(src)) break;
+      // runAdd runs its own scope/agent prompts — no flags to force its hand.
+      try {
+        const run = await runAdd(String(src), {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      break;
+    }
     case "list": {
-      // project and global are separate scopes in installedSkills — show both
-      const skills = [...installedSkills({}), ...installedSkills({ global: true })];
-      if (skills.length === 0) {
-        p.log.info("No installed skills found (checked this folder and your user directory).");
-      } else {
-        p.log.message(
-          skills
-            .map((sk) => {
-              const parsed = parseSkillMd(sk.raw);
-              const desc = "error" in parsed ? pc.red(`(invalid SKILL.md — ${parsed.error})`) : pc.dim(parsed.description.slice(0, 70));
-              return `${pc.bold(sk.name)} ${pc.dim(`[${sk.agent}/${sk.scope}]`)}\n  ${desc}`;
-            })
-            .join("\n"),
-        );
+      // runList already merges the project and global scopes into one table.
+      console.log(runList({}).output);
+      break;
+    }
+    case "update": {
+      try {
+        const run = await runUpdate([], {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      break;
+    }
+    case "remove": {
+      // runRemove brings its own picker and confirmation.
+      try {
+        const run = await runRemove([], {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
       }
       break;
     }

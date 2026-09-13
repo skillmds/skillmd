@@ -65,7 +65,6 @@ export async function runLint(target: string, flags: LintFlags): Promise<LintRun
 
 export function lintCommand(): Command {
   return new Command("lint")
-    .alias("check")
     .description("Validate SKILL.md file(s) against the spec and report a quality score")
     .argument("[target]", "local path or GitHub source", ".")
     .option("--format <fmt>", "text | json | sarif | github", "text")

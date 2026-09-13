@@ -31,9 +31,11 @@ const VALID_SKILL = [
 ].join("\n");
 
 // Point the child at an unroutable API so no test ever touches the network.
+// https, not http: the shared client refuses an http:// base outright (a token
+// would travel unencrypted), and the server builds its context at startup.
 const env: Record<string, string> = {};
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-env.SKILLMD_API = "http://127.0.0.1:9";
+env.SKILLMD_API = "https://127.0.0.1:9";
 delete env.SKILLMD_TOKEN;
 
 describe("MCP stdio server", () => {

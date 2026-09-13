@@ -1,11 +1,16 @@
 // Resolve a source argument into one or more SKILL.md documents.
-// Supported forms:
-//   - local file path to a SKILL.md
-//   - local directory (recursively searched for **/SKILL.md)
-//   - "owner/repo", "github:owner/repo", or a GitHub URL (fetched via giget)
+// The grammar of what a `<source>` may look like lives in ./sources.ts; this
+// module turns a parsed spec into files (local walk, gist fetch, or a giget
+// download into a temp dir that is always cleaned up).
 import { existsSync, statSync, lstatSync, readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename, dirname, relative, sep } from "node:path";
+import { parseSource, gigetInput } from "./sources.js";
+import type { SourceSpec } from "./sources.js";
+import { FETCH_TIMEOUT_MS, MAX_PACK_BYTES, MAX_PACK_FILES } from "./limits.js";
+import { timedFetch } from "./api.js";
+import type { RegistrySkill } from "./api.js";
+import type { SkillFileInput } from "./installer.js";
 
 export interface ResolvedSkill {
   /** Display label / relative path used in reports. */
@@ -55,41 +60,91 @@ function loadLocal(file: string): ResolvedSkill {
   return { path: file, raw: readFileSync(file, "utf8"), slug: basename(dirname(file)), file };
 }
 
-function isLikelyLocal(arg: string): boolean {
-  return arg === "." || arg.startsWith("./") || arg.startsWith("../") || arg.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(arg) || existsSync(arg);
+export interface RemoteOptions { fetch?: typeof fetch }
+
+/** Ask GitHub how big the target subtree is before downloading it. Best-effort:
+ *  unauthenticated API limits or a missing ref just skip the check (the
+ *  post-download collectFiles caps still apply). */
+export async function precheckTreeSize(spec: Extract<SourceSpec, { kind: "github" }>, opts: RemoteOptions = {}): Promise<void> {
+  const f = timedFetch(opts.fetch ?? fetch, FETCH_TIMEOUT_MS);
+  const ref = spec.ref ?? "HEAD";
+  const res = await f(`https://api.github.com/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "skillmd-cli" },
+  }).catch(() => null);
+  if (!res || !res.ok) return;
+  const data = (await res.json().catch(() => null)) as { truncated?: boolean; tree?: { path: string; type: string; size?: number }[] } | null;
+  if (!data?.tree || data.truncated) return;
+  const prefix = spec.subpath ? `${spec.subpath}/` : "";
+  const blobs = data.tree.filter((t) => t.type === "blob" && (!prefix || t.path.startsWith(prefix)));
+  const bytes = blobs.reduce((n, t) => n + (t.size ?? 0), 0);
+  if (blobs.length > MAX_PACK_FILES) throw new Error(`pack too large: ${blobs.length} files (limit ${MAX_PACK_FILES}) — point at the skill's own directory (pre-download estimate from the GitHub tree API)`);
+  if (bytes > MAX_PACK_BYTES) throw new Error(`pack too large: ${Math.round(bytes / (1024 * 1024))}MB (limit ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB) (pre-download estimate from the GitHub tree API)`);
 }
 
-export async function resolveSource(arg: string): Promise<ResolvedSkill[]> {
-  if (isLikelyLocal(arg)) {
-    if (!existsSync(arg)) throw new Error(`Path not found: ${arg}`);
-    const st = statSync(arg);
-    if (st.isFile()) return [loadLocal(arg)];
-    const files = findSkillFiles(arg);
+/** Widen a slug (or pass through a github spec) into the github shape the download path needs. */
+function asGithub(spec: Extract<SourceSpec, { kind: "github" | "slug" }>, ref?: string, display?: string): Extract<SourceSpec, { kind: "github" }> {
+  if (spec.kind === "github") return spec;
+  return { kind: "github", owner: spec.owner, repo: spec.name, ref, display: display ?? spec.display };
+}
+
+async function downloadGithub(spec: Extract<SourceSpec, { kind: "github" }>, prefix: string, opts: RemoteOptions, precheck: boolean): Promise<{ dir: string; cleanup: () => void }> {
+  if (precheck) await precheckTreeSize(spec, opts);
+  const { downloadTemplate } = await import("giget");
+  const tmp = mkdtempSync(join(tmpdir(), prefix));
+  const cleanup = () => rmSync(tmp, { recursive: true, force: true });
+  try {
+    const { dir } = await downloadTemplate(gigetInput(spec), { dir: tmp, forceClean: true });
+    return { dir, cleanup };
+  } catch (e) {
+    cleanup();
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`could not download ${spec.display}: ${msg}${/404|Not Found/i.test(msg) ? " (repo, ref or subpath not found — is it private?)" : ""}`);
+  }
+}
+
+export async function resolveSource(arg: string, opts: RemoteOptions = {}): Promise<ResolvedSkill[]> {
+  const spec = parseSource(arg);
+  if (spec.kind === "local") {
+    if (!existsSync(spec.path)) throw new Error(`Path not found: ${spec.path}`);
+    const st = statSync(spec.path);
+    if (st.isFile()) return [loadLocal(spec.path)];
+    const files = findSkillFiles(spec.path);
     if (files.length === 0) {
-      throw new Error(`No SKILL.md found under ${arg}. Point at a skill directory, e.g. "skillmd lint ./my-skill", or run "skillmd init" to create one.`);
+      throw new Error(`No SKILL.md found under ${spec.path}. Point at a skill directory, e.g. "skillmd lint ./my-skill", or run "skillmd init" to create one.`);
     }
     return files.map(loadLocal);
   }
-
-  // Remote: fetch with giget into a temp dir, then search it.
-  const { downloadTemplate } = await import("giget");
-  const input = normalizeGiget(arg);
-  const dir = mkdtempSync(join(tmpdir(), "skillmd-src-"));
-  const { dir: out } = await downloadTemplate(input, { dir, forceClean: true });
-  const files = findSkillFiles(out);
-  if (files.length === 0) throw new Error(`No SKILL.md found in ${arg}`);
-  return files.map(loadLocal);
+  if (spec.kind === "gist") {
+    const f = timedFetch(opts.fetch ?? fetch, FETCH_TIMEOUT_MS);
+    const res = await f(`https://gist.githubusercontent.com/${spec.user}/${spec.id}/raw/SKILL.md`);
+    if (!res.ok) throw new Error(`gist ${spec.id} has no SKILL.md (HTTP ${res.status})`);
+    const tooBig = (n: number): Error =>
+      new Error(`gist ${spec.id} is too large: ${Math.round(n / (1024 * 1024))}MB (limit ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB)`);
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_PACK_BYTES) throw tooBig(declared);
+    const raw = await res.text();
+    if (raw.length > MAX_PACK_BYTES) throw tooBig(raw.length);
+    return [{ path: spec.display, raw, slug: `gist-${spec.id.slice(0, 8)}` }];
+  }
+  const gh = asGithub(spec);
+  // Whole-repo resolves walk the checkout without buffering contents, so only a
+  // subpath fetch (which giget materialises as a pack) needs the size pre-check.
+  const { dir, cleanup } = await downloadGithub(gh, "skillmd-src-", opts, Boolean(gh.subpath));
+  try {
+    let files = findSkillFiles(dir);
+    if (gh.skill) files = files.filter((f) => basename(dirname(f)) === gh.skill);
+    if (files.length === 0) throw new Error(`No SKILL.md found in ${gh.display}${gh.skill ? ` for skill "${gh.skill}"` : ""}`);
+    // Contents are read into memory before the temp dir goes away.
+    return files.map((f) => ({ ...loadLocal(f), path: relative(dir, f).split(sep).join("/"), file: undefined }));
+  } finally {
+    cleanup();
+  }
 }
 
 export interface TreeFile {
   path: string; // forward-slash, relative to the skill root
   contents: Buffer;
 }
-
-// Caps for pack downloads: skills are docs-plus-templates, not datasets. A tree
-// past these limits is either the wrong directory or something hostile.
-const MAX_PACK_FILES = 200;
-const MAX_PACK_BYTES = 20 * 1024 * 1024;
 
 export interface CollectLimits {
   maxFiles?: number;
@@ -125,26 +180,47 @@ export function collectFiles(root: string, dir: string, limits: CollectLimits = 
   return out;
 }
 
-/** Download a skill's source directory (giget, pinned to `ref` when given)
- *  and return its full file tree. `sourceUrl` may be a GitHub tree URL with a
- *  subpath, e.g. https://github.com/o/r/tree/main/skills/seo-plan */
-export async function resolveTree(sourceUrl: string, ref?: string): Promise<TreeFile[]> {
-  const { downloadTemplate } = await import("giget");
-  const input = normalizeGiget(sourceUrl) + (ref ? `#${ref}` : "");
-  const dir = mkdtempSync(join(tmpdir(), "skillmd-pack-"));
+/** Download a skill directory (pinned to `ref` when given) and return its file tree. */
+export async function resolveTree(sourceUrl: string, ref?: string, opts: RemoteOptions = {}): Promise<TreeFile[]> {
+  const spec = parseSource(sourceUrl, { ref });
+  if (spec.kind !== "github" && spec.kind !== "slug") throw new Error(`cannot fetch a tree from ${sourceUrl}`);
+  const gh = asGithub(spec, ref, sourceUrl);
+  // Pack fetches always buffer the whole tree into memory, so they stay capped.
+  const { dir, cleanup } = await downloadGithub(gh, "skillmd-pack-", opts, true);
   try {
-    const { dir: out } = await downloadTemplate(input, { dir, forceClean: true });
     // collectFiles buffers contents in memory, so the temp dir can go right away.
-    return collectFiles(out, out);
+    return collectFiles(dir, dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    cleanup();
   }
 }
 
-function normalizeGiget(arg: string): string {
-  // github URL → github:owner/repo[/subpath]
-  const m = arg.match(/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/[^/]+\/(.+))?/);
-  if (m) return `github:${m[1]}/${m[2]}${m[3] ? "/" + m[3] : ""}`;
-  if (arg.startsWith("github:") || arg.startsWith("gh:")) return arg;
-  return `github:${arg}`; // owner/repo shorthand
+export interface PackResolution {
+  raw: string;
+  files: SkillFileInput[];
+  pinMiss: boolean;
+}
+
+/** Fetch a pack's full file tree, degrading in two steps: pinned commit →
+ *  default branch (source repos force-push; bad pins are a real-world
+ *  condition) → null, letting the caller fall back to the registry copy.
+ *  An unpinned fetch is acceptable degradation: the fetched SKILL.md is still
+ *  linted before install and the unverified gate still applies. */
+export async function resolvePackFiles(
+  skill: Pick<RegistrySkill, "source_repo" | "commit_sha">,
+  fetchTree: (url: string, ref?: string) => Promise<TreeFile[]> = resolveTree,
+): Promise<PackResolution | null> {
+  if (!skill.source_repo) return null;
+  const attempts: { ref?: string; pinMiss: boolean }[] = [{ ref: skill.commit_sha ?? undefined, pinMiss: false }];
+  if (skill.commit_sha) attempts.push({ ref: undefined, pinMiss: true });
+  for (const attempt of attempts) {
+    try {
+      const files = await fetchTree(skill.source_repo, attempt.ref);
+      const sk = files.find((f) => f.path === "SKILL.md");
+      if (sk) return { raw: sk.contents.toString("utf8"), files, pinMiss: attempt.pinMiss };
+    } catch {
+      // pinned commit gone (force-push) or network/repo failure → next step
+    }
+  }
+  return null;
 }

@@ -2,6 +2,90 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.2.0
+
+`skillmd add` was rewritten. It no longer copies a skill into every agent folder it can find: it writes **one canonical copy** and links that copy into the agents you chose, in the scope you chose, and records what it did in a lock file.
+
+### Never litters your folders
+
+- In a terminal, `add` asks **Installation scope: Project / Global** before writing anything, then which of the detected agents to link into. The agent selection is remembered and pre-checked next time.
+- With `-y`, `--json`, piped stdin, or inside a host agent (Claude Code, Cursor, Codex, Gemini CLI, CI) the scope is auto-detected: **project** when the current directory carries `.git`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `AGENTS.md`, `CLAUDE.md`, `skills-lock.json` or an agent dot-dir, **global** otherwise. The run says which it picked.
+- A piped run with neither `-y` nor a scope flag now **exits 1 with a hint** instead of guessing. Running `skillmd add owner/name` from your Desktop no longer scatters `.claude/`, `.cursor/`, `.codex/`, `.agents/` there.
+- New `-p, --project` forces the current directory; `-g, --global` is unchanged. Cancelling a prompt installs nothing.
+- Project installs only touch agents that are **already present in the project** (or named with `-a`) — `add -p` never creates a folder for an agent the project does not use.
+
+### One canonical copy, links everywhere
+
+- The skill's files are written once to `.agents/skills/<name>` (project) or `~/.agents/skills/<name>` (global). Each chosen agent directory gets a **junction** (Windows) or **symlink** (everywhere else) pointing at it; if the filesystem refuses, the CLI falls back to a copy and says so.
+- `--mode link|copy` picks between the two (`link` is the default). The old `--copy` spelling still works as a hidden alias.
+- Writes are staged and moved into place, so an interrupted install never leaves a half-written skill behind.
+- `add` refuses to replace a skill installed from a **different source**, or a directory it does not track, unless you pass `--force`.
+- Local directory sources install **all** of the skill's files. GitHub and gist sources install `SKILL.md` only for now; registry installs deliver the full bundle.
+
+### Lock files
+
+- Project installs write `skills-lock.json` next to your code — sorted, no timestamps, designed to be committed and to produce clean diffs. Global installs write `~/.skillmd/lock.json`.
+- Each entry records the `source`, the `commit_sha` it came from, a `digest` of the installed files, the `agents` it is linked into, and the link `mode` per agent. `list`, `update`, `check` and `remove` all read it.
+
+### Real source grammar
+
+One parser now decides what a `<source>` argument means, and every command uses it:
+
+- `owner/name` — a registry slug (GitHub is the fallback).
+- `owner/repo#ref` — a branch, tag or commit.
+- `owner/repo/sub/path` — a subdirectory of a repo.
+- `owner/repo@skill` — one named skill inside a repo or pack.
+- `github:owner/repo` / `gh:owner/repo` — force the GitHub reading of a bare `owner/name`.
+- GitHub `tree/` and `blob/` URLs, with the ref in the URL preserved (a `blob` URL pointing at a `SKILL.md` resolves to its directory).
+- Gist URLs.
+- `--ref <ref>` overrides the ref on any GitHub source; `-l, --list` prints the skills a source contains without installing anything.
+- GitLab and `git@`/`ssh://` sources get a clear "clone it locally and run `skillmd add ./path/to/skill`" message instead of a confusing 404.
+
+### Production behaviour
+
+- **`list` / `ls`** — both scopes by default (`-g`, `-p` to narrow, `-a` to filter by agent, `--json`). Columns: name · scope · agents · mode · source. Skills that are on disk but not in a lock file — hand-made, or installed by 1.1.x — are tagged `untracked`.
+- **`remove` / `rm`** — takes `[names...]` or opens a picker; confirms unless `-y`. `--all` removes everything in scope (not combinable with names). `-a` unlinks only those agents and leaves the canonical copy alone; `-g`/`-p` narrow the scope, both are searched by default. `--json` supported; exits 1 when nothing was removed.
+- **`update [names]`** — lock-driven: it refreshes the **full bundle** from the source recorded for each skill, re-lints before writing, and short-circuits when the recorded `commit_sha` has not moved. `--check` reports without writing, `-g`/`-p` narrow the scope, `--json` is supported, and any failure exits 1. Untracked skills are reported and skipped with "reinstall with `skillmd add`".
+- **New `check` command** — `update --check` under its own name.
+- **`login` / `logout` / `init`** never prompt off a TTY: they exit 1 naming the flags to pass instead of hanging an agent or a CI job. All three accept `--json`.
+- A stored token is now **bound to the API host it was saved for**, so a token for one registry is never sent to another. `http://` bases are refused unless you pass `--insecure-http`.
+- `--token` on a terminal prints a warning on stderr: it lands in shell history and in every `ps` listing — prefer `skillmd login` or `SKILLMD_TOKEN`.
+
+### Security
+
+- Every file in a registry bundle must carry a sha256 and match it, including companion files delivered by URL. A missing or mismatched hash refuses the install rather than writing unverifiable content. The one exception is the bundle's inline `SKILL.md`: the registry generates that file from the skill's stored record rather than storing it, so there is no hash to compare it against. Every other path, hashed or not, is either verified or refused.
+- Registry bundles are capped at **200 files / 20 MB**. Every registry, GitHub raw and gist request carries a **30 s** timeout; the repository download itself runs through `giget`, which takes no deadline — it is bounded instead by the pre-download size check against the GitHub tree API and by the same 200 files / 20 MB caps once the files are on disk. Temp directories are cleaned up on both the success and the failure path.
+- Terminal escape sequences are stripped from registry text before it is printed, so a description can never repaint your terminal.
+- Windows reserved device names (`con`, `nul`, `lpt1`, …) are refused as skill or file names.
+- The install-count `POST /api/skills/<owner>/<name>/install` (body `{"via":"cli"}`, nothing else) is documented in the README and skipped entirely when `SKILLMD_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` is set.
+
+### MCP server rewritten in TypeScript
+
+- The server is now TypeScript on the same code path as the CLI — one installer, one source parser, one sanitiser, one set of schemas.
+- `skillmd_install` gained `scope`, `agents`, `mode`, `force` and `deny`, and installs through the canonical-copy-plus-links model like the CLI.
+- `dest` is **deprecated**: it is accepted only when it points at a known agent skills directory. Use `scope` + `agents`.
+- `skillmd_lint` diagnostics declare the correct severity enum (`warn`, not `warning`).
+- `skillmd_list_saved` results go through the same sanitiser as every other tool's output.
+
+### Agent table refreshed
+
+- codex, goose, amp and zed use the cross-agent `.agents/skills` convention; gemini-cli uses `.gemini/skills`; antigravity uses `.agent/skills`; droid uses `.factory/skills`.
+- `CLAUDE_CONFIG_DIR` and `CODEX_HOME` relocate those agents' global directories.
+- Project-only agents (eve, promptscript) no longer claim a global directory.
+- Legacy directories stay in the detection list, so an existing install is still found.
+
+### Removed
+
+- `--copy` is now a hidden alias of `--mode copy` (still works, no longer advertised).
+- The `yaml` dependency — nothing imported it since the validation engine moved to `@skillmds/core`.
+- `lint`'s undocumented `check` alias, which collided with the new `check` command. Use `skillmd lint`.
+
+### Upgrade notes
+
+- A token saved by an earlier `skillmd login --api <other-host>` is now treated as bound to `api.skillmd.com`. If you use a different registry, re-run `skillmd login --api <url>`.
+- Skills installed by 1.1.x show as `untracked` in `list` and are skipped by `update`. Re-run `skillmd add` on them once to bring them under the lock file.
+- If a script used `skillmd check .` to lint, change it to `skillmd lint .` — `check` now reports available updates.
+
 ## 1.1.2
 
 - **MCP tool metadata.** Every tool now declares a `title`, `annotations` (all read-only except `skillmd_install`, none destructive), an `outputSchema`, and a description on every parameter; list-returning tools respond with `structuredContent: { items }`, `skillmd_lint` and `skillmd_install` return structured results, and refusals are flagged `isError`.
