@@ -6,7 +6,15 @@ import { lint, skillMdFor } from "@skillmds/core";
 import { safeText } from "../sanitize.js";
 import { ITEMS, LINT_RESULT, INSTALL_RESULT, OMIT_FIELDS } from "./schemas.js";
 import { installFromRegistry } from "./install.js";
+import { notice, parseSlug } from "./types.js";
+import type { ToolContext, ToolResult } from "./types.js";
 import type { RegistrySkill } from "../api.js";
+
+// The shared vocabulary lives in ./types.js so install.ts can import it without
+// importing this module back; re-exported here because this is where callers
+// (and every existing test) expect to find it.
+export { notice, parseSlug };
+export type { ToolContext, ToolResult };
 
 export interface ToolDefinition {
   name: string;
@@ -60,7 +68,9 @@ export const TOOLS: ReadonlyArray<ToolDefinition> = [
         title: { type: "string", description: "Human-readable skill title" },
         description: { type: "string", description: "What the skill does and when an agent should use it" },
         category: { type: "string", description: "Category name" },
+        category_slug: { type: "string", description: "Category slug, as used by search and trending filters" },
         owner_handle: { type: "string", description: "Publisher handle" },
+        owner_name: { type: "string", description: "Publisher display name" },
         license: { type: ["string", "null"], description: "SPDX license id when declared" },
         security_flags: {
           type: "array",
@@ -69,11 +79,16 @@ export const TOOLS: ReadonlyArray<ToolDefinition> = [
         },
         ai_audit_verdict: { type: ["string", "null"], description: "Safety review verdict: pass, caution, warning, fail or inconclusive" },
         repo_stars: { type: ["number", "null"], description: "GitHub stars of the source repository" },
+        install_snippet: { type: "string", description: "One-line install command" },
+        type: { type: "string", enum: ["single", "pack"], description: "single SKILL.md or a multi-file pack" },
         body_md: { type: "string", description: "Markdown body of SKILL.md" },
         raw_md: { type: ["string", "null"], description: "Verbatim SKILL.md including frontmatter when stored" },
+        verified: { type: "boolean", description: "Published by a verified publisher" },
         source_repo: { type: ["string", "null"], description: "Upstream repository" },
         commit_sha: { type: ["string", "null"], description: "Pinned upstream commit" },
         files: { type: "array", description: "Companion files for packs", items: { type: "object", additionalProperties: true } },
+        tags: { type: "array", items: { type: "object", additionalProperties: true }, description: "Registry tags" },
+        categories: { type: "array", items: { type: "object", additionalProperties: true }, description: "Every category the skill belongs to" },
       },
       required: ["slug", "title", "description"],
       additionalProperties: true,
@@ -82,13 +97,13 @@ export const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
   {
     name: "skillmd_install",
-    title: "Install a skill",
+    title: "Install skill",
     description:
       "Install a skill by owner/name slug: validates it, then writes one canonical copy (.agents/skills/<name>) and links it into the chosen agents' skill directories. Never executes scripts. The response reports the skill's capability flags (docs_only, network_calls, executes_scripts, reads_secrets) as information.",
     inputSchema: {
       type: "object",
       properties: {
-        slug: { type: "string", description: "owner/name of the registry skill to install" },
+        slug: { type: "string", pattern: "^[^/]+/[^/]+$", description: "Skill identifier as owner/name, e.g. anthropic/pdf" },
         scope: {
           type: "string",
           enum: ["project", "global"],
@@ -112,7 +127,7 @@ export const TOOLS: ReadonlyArray<ToolDefinition> = [
       additionalProperties: false,
     },
     outputSchema: INSTALL_RESULT,
-    annotations: { title: "Install a skill", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { title: "Install skill", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "skillmd_trending",
@@ -178,24 +193,6 @@ export const TOOLS: ReadonlyArray<ToolDefinition> = [
   },
 ];
 
-/** Everything a tool needs from the outside world. The MCP server builds one
- *  from the shared CLI client; tests build one by hand. */
-export interface ToolContext {
-  api: <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
-  hasToken: boolean;
-  base: string;
-  token?: string;
-  cwd?: string;
-  home?: string;
-  env?: NodeJS.ProcessEnv;
-}
-
-export interface ToolResult {
-  content: { type: "text"; text: string }[];
-  structuredContent?: Record<string, unknown>;
-  isError?: boolean;
-}
-
 /** A result carrying both the human text and the structured payload the tool's
  *  outputSchema describes. Arrays are wrapped as { items } so structuredContent
  *  is always an object, as the spec requires; plain strings are messages only. */
@@ -204,10 +201,6 @@ const text = (obj: unknown): ToolResult => {
   const structured = (Array.isArray(obj) ? { items: obj } : obj) as Record<string, unknown>;
   return { content: [{ type: "text", text: JSON.stringify(structured, null, 2) }], structuredContent: structured };
 };
-
-/** A human-readable refusal/notice: text only, flagged as an error so clients
- *  do not expect structuredContent for it. */
-export const notice = (msg: string): ToolResult => ({ isError: true, content: [{ type: "text", text: msg }] });
 
 /** Drop the site-only fields (ratings, counters, avatars, ranker internals) and
  *  strip terminal escapes from every string: registry text is untrusted and
@@ -221,12 +214,12 @@ const clean = (items: Record<string, unknown>[] | undefined): Record<string, unk
     ),
   );
 
-/** owner/name, in the registry's slugify alphabet only — the name becomes a
- *  directory in skillmd_install, so anything else is refused up front. */
-const splitSlug = (slug: unknown): [string, string] | null => {
-  const m = String(slug ?? "").match(/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/i);
-  return m ? [m[1]!, m[2]!] : null;
-};
+/** Strip terminal escapes from every string but drop nothing: skillmd_get is
+ *  the one tool whose job is the whole record, and the fields the list tools
+ *  trim (type, verified, category_slug) are exactly what an agent weighs
+ *  before it installs. */
+const sanitizeRecord = (skill: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(skill).map(([k, v]) => [k, typeof v === "string" ? safeText(v, 2000) : v]));
 
 export async function handleCall(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   try {
@@ -241,10 +234,10 @@ export async function handleCall(name: string, args: Record<string, unknown>, ct
         return text(clean(r.items));
       }
       case "skillmd_get": {
-        const s = splitSlug(args.slug);
+        const s = parseSlug(args.slug);
         if (!s) return notice("Provide `slug` as owner/name.");
         const skill = await ctx.api<Record<string, unknown>>(`/api/skills/${s[0]}/${s[1]}`);
-        return text(clean([skill])[0]);
+        return text(sanitizeRecord(skill));
       }
       case "skillmd_trending": {
         const p = new URLSearchParams({ range: String(args.range ?? "all"), limit: String(args.limit ?? 20) });
@@ -254,7 +247,7 @@ export async function handleCall(name: string, args: Record<string, unknown>, ct
       }
       case "skillmd_recommend": {
         const limit = Number(args.limit ?? 10);
-        const s = splitSlug(args.based_on);
+        const s = parseSlug(args.based_on);
         if (s) {
           const base = await ctx.api<{ category_slug?: string }>(`/api/skills/${s[0]}/${s[1]}`).catch(() => null);
           if (base?.category_slug) {
@@ -277,7 +270,7 @@ export async function handleCall(name: string, args: Record<string, unknown>, ct
         let slug: string | undefined;
         let verified = false;
         if (!raw && args.slug) {
-          const s = splitSlug(args.slug);
+          const s = parseSlug(args.slug);
           if (!s) return notice("Provide `slug` as owner/name.");
           const skill = await ctx.api<RegistrySkill>(`/api/skills/${s[0]}/${s[1]}`);
           raw = skillMdFor(skill);
