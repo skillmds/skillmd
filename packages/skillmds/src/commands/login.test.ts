@@ -40,6 +40,12 @@ describe("runLogin", () => {
     const r = await runLogin({ token: "sk_x", home, env: {}, json: true }, {});
     expect(JSON.parse(r.output)).toMatchObject({ ok: true, host: "api.skillmd.com" });
   });
+  it("default deps honour an injected host-agent env — never prompts, exits 1 with the hint", async () => {
+    const home = tmp();
+    const r = await runLogin({ home, env: { CLAUDECODE: "1" } });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toMatch(/--token|SKILLMD_TOKEN/);
+  });
   it("logout removes token and host; exit 0 even when nothing was stored", () => {
     const home = tmp();
     expect(runLogout({ home }).exitCode).toBe(0);

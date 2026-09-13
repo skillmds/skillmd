@@ -70,3 +70,11 @@ export function scopesFor(flags: { global?: boolean; project?: boolean }): boole
 export function nonInteractiveHint(flags: string): string {
   return `Interactive prompt required but stdin is not a terminal. Nothing was changed. Re-run with ${flags} to run non-interactively.`;
 }
+
+/** `{ prompt }` when this run may open a clack prompt, else `{}` — the shared
+ *  "may I ask?" gate for login/init/remove-style commands. Threads `flags.env`
+ *  so injected environments (tests, SDK callers) drive host-agent detection. */
+export function promptIf<T>(flags: ModeFlags & { env?: NodeJS.ProcessEnv }, prompt: () => Promise<T>): { prompt?: () => Promise<T> } {
+  const term: Terminal = { stdinTTY: Boolean(process.stdin.isTTY), stdoutTTY: Boolean(process.stdout.isTTY), env: flags.env ?? process.env };
+  return isInteractive(flags, term) ? { prompt } : {};
+}

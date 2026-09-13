@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { slugify } from "@skillmds/core";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { isInteractive, nonInteractiveHint } from "../env.js";
+import { promptIf, nonInteractiveHint } from "../env.js";
 
 export function skillTemplate(name: string, description: string, license: string): string {
   const desc = description.trim() || `A skill that helps agents with ${name}.`;
@@ -57,6 +57,7 @@ export interface InitFlags {
   yes?: boolean;
   json?: boolean;
   dir?: string;
+  env?: NodeJS.ProcessEnv;
 }
 
 /** The one thing that needs a terminal, injected so the command stays testable. */
@@ -66,14 +67,10 @@ export interface InitDeps {
 }
 
 const defaultInitDeps = (flags: InitFlags): InitDeps =>
-  isInteractive(flags)
-    ? {
-        prompt: async () => {
-          const answer = await p.text({ message: "Skill name?", placeholder: "my-skill" });
-          return p.isCancel(answer) ? null : answer;
-        },
-      }
-    : {};
+  promptIf(flags, async () => {
+    const answer = await p.text({ message: "Skill name?", placeholder: "my-skill" });
+    return p.isCancel(answer) ? null : answer;
+  });
 
 export interface InitResult { exitCode: 0 | 1; output: string; file?: string }
 

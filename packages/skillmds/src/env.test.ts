@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectHostAgent, isInteractive, createReporter, scopesFor } from "./env.js";
+import { detectHostAgent, isInteractive, createReporter, scopesFor, promptIf } from "./env.js";
 
 describe("detectHostAgent", () => {
   it("recognises the agents that launch CLIs non-interactively", () => {
@@ -43,6 +43,20 @@ describe("createReporter", () => {
     r.result({ ok: true });
     expect(out).toEqual(["hello"]);
     expect(err).toEqual([]);
+  });
+});
+
+describe("promptIf", () => {
+  it("never prompts inside a host agent, even if the test process has a TTY", async () => {
+    const result = await Promise.resolve(promptIf({ env: { CLAUDECODE: "1" } }, async () => "x"));
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+  it("never prompts with -y/--json", () => {
+    expect(Object.keys(promptIf({ yes: true }, async () => "x"))).toHaveLength(0);
+  });
+  it("never prompts when the test runner itself lacks a TTY", () => {
+    if (process.stdin.isTTY && process.stdout.isTTY) return;
+    expect(Object.keys(promptIf({ env: {} }, async () => "x"))).toHaveLength(0);
   });
 });
 

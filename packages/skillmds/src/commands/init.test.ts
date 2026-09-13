@@ -37,4 +37,9 @@ describe("runInit non-interactive", () => {
     expect(r.exitCode).toBe(0);
     expect(r.file).toContain("prompted");
   });
+  it("default deps honour an injected host-agent env — never prompts, exits 1 with the hint", async () => {
+    const r = await runInit(undefined, { dir: tmp(), env: { CLAUDECODE: "1" } });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toMatch(/--name/);
+  });
 });

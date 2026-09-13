@@ -2,7 +2,7 @@ import { Command } from "commander";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { readConfig, writeConfig, configPath, hostOf, resolveApi } from "../config.js";
-import { isInteractive, nonInteractiveHint } from "../env.js";
+import { promptIf, nonInteractiveHint } from "../env.js";
 
 export interface LoginFlags {
   token?: string;
@@ -24,14 +24,10 @@ export interface LoginDeps {
 export interface CmdResult { exitCode: 0 | 1; output: string }
 
 const defaultLoginDeps = (flags: LoginFlags): LoginDeps =>
-  isInteractive(flags)
-    ? {
-        prompt: async () => {
-          const answer = await p.password({ message: "Paste your SkillMD token (from your account page)" });
-          return p.isCancel(answer) ? null : answer;
-        },
-      }
-    : {};
+  promptIf(flags, async () => {
+    const answer = await p.password({ message: "Paste your SkillMD token (from your account page)" });
+    return p.isCancel(answer) ? null : answer;
+  });
 
 export async function runLogin(flags: LoginFlags, deps: LoginDeps = defaultLoginDeps(flags)): Promise<CmdResult> {
   const env = flags.env ?? process.env;
