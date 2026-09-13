@@ -9,7 +9,7 @@ import { infoCommand } from "./commands/info.js";
 import { addCommand } from "./commands/add.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
-import { updateCommand } from "./commands/update.js";
+import { updateCommand, checkCommand } from "./commands/update.js";
 import { publishCommand } from "./commands/publish.js";
 import { loginCommand, logoutCommand } from "./commands/login.js";
 import { runInteractive } from "./commands/interactive.js";
@@ -43,6 +43,7 @@ program.addCommand(addCommand());
 program.addCommand(listCommand());
 program.addCommand(removeCommand());
 program.addCommand(updateCommand());
+program.addCommand(checkCommand());
 
 // Publish + auth.
 program.addCommand(publishCommand());
