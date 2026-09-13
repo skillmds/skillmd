@@ -18,5 +18,5 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   splitting: true,
-  external: ["@skillmds/core", "@modelcontextprotocol/sdk", "commander", "@clack/prompts", "picocolors", "yaml", "giget"],
+  external: ["@skillmds/core", "@modelcontextprotocol/sdk", "commander", "@clack/prompts", "picocolors", "giget"],
 });
