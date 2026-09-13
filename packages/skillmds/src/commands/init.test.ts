@@ -42,4 +42,20 @@ describe("runInit non-interactive", () => {
     expect(r.exitCode).toBe(1);
     expect(r.output).toMatch(/--name/);
   });
+  it("--json keeps the off-TTY hint a JSON document", async () => {
+    const r = await runInit(undefined, { dir: tmp(), json: true }, {});
+    expect(r.exitCode).toBe(1);
+    const doc = JSON.parse(r.output);
+    expect(doc.ok).toBe(false);
+    expect(doc.error).toMatch(/--name/);
+  });
+  it("--json keeps a cancelled prompt a JSON document", async () => {
+    const r = await runInit(undefined, { dir: tmp(), json: true }, { prompt: async () => null });
+    expect(JSON.parse(r.output)).toMatchObject({ ok: false, cancelled: true });
+  });
+  it("--json keeps an empty name answer a JSON document", async () => {
+    const r = await runInit(undefined, { dir: tmp(), json: true }, { prompt: async () => "" });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.output).error).toMatch(/--name/);
+  });
 });

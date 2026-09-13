@@ -1,4 +1,4 @@
-// Agent directory resolution + skill writing. Mirrors the scope model of the
+// Agent directory resolution and detection. Mirrors the scope model of the
 // `skills` CLI: project scope writes to ./<project-dir>, global scope to
 // ~/<global-dir>. Detection is machine-level (an agent's root config dir under
 // $HOME), so `skillmd add` targets every agent the user actually has — not just
@@ -10,9 +10,9 @@
 // documented dir wins as the write target; the legacy/alternate roots stay in
 // `projectRoots` and `detect` so installs made under the old convention remain
 // visible to list/update/remove.
-import { mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, readdirSync, statSync, readFileSync } from "node:fs";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, isAbsolute, dirname, sep } from "node:path";
+import { join, resolve, isAbsolute } from "node:path";
 
 export interface Agent {
   id: string;
@@ -174,76 +174,6 @@ export function detectAgents(opts: ScopeOptions = {}): string[] {
   }).map((a) => a.id);
 }
 
-export interface SkillFileInput {
-  /** Path relative to the skill root, e.g. "SKILL.md". */
-  path: string;
-  contents: string | Buffer;
-}
-
-/**
- * Write a skill (one or more files) into <agentDir>/<skillName>.
- * mode "copy" writes file contents; "symlink" links to a canonical copy.
- */
-export function writeSkill(
-  skillName: string,
-  files: SkillFileInput[],
-  targetDir: string,
-  opts: { mode?: "copy" | "symlink"; canonicalDir?: string } = {},
-): string {
-  // The skill name becomes a directory under targetDir. A hostile source
-  // (GitHub repo / local path) could carry a name like "../../evil" that
-  // escapes targetDir before the per-file zip-slip guard below even applies.
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(skillName) || skillName.includes("..")) {
-    throw new Error(`refused unsafe skill name: "${skillName}"`);
-  }
-  const dest = join(targetDir, skillName);
-  if (opts.mode === "symlink" && opts.canonicalDir) {
-    mkdirSync(dirname(dest), { recursive: true });
-    rmSync(dest, { recursive: true, force: true });
-    symlinkSync(resolve(opts.canonicalDir), dest, "dir");
-    return dest;
-  }
-  mkdirSync(dest, { recursive: true });
-  const root = resolve(dest);
-  for (const f of files) {
-    // Zip-slip guard: a hostile pack could carry paths like "../../etc" — refuse
-    // anything that resolves outside the skill's own directory.
-    const fp = resolve(dest, f.path);
-    if (fp !== root && !fp.startsWith(root + sep)) {
-      throw new Error(`refused unsafe path in skill "${skillName}": ${f.path}`);
-    }
-    mkdirSync(dirname(fp), { recursive: true });
-    writeFileSync(fp, f.contents);
-  }
-  return dest;
-}
-
-export interface InstalledSkill {
-  name: string;
-  agent: string;
-  scope: "global" | "project";
-  path: string;
-  raw: string;
-}
-
-/** Enumerate installed skills across known agent dirs (reads each SKILL.md).
- *  Agents sharing a dir (the `.agents/skills` convention) are deduped — each
- *  physical skill is reported once, under the first agent claiming the dir. */
-export function installedSkills(opts: ScopeOptions = {}): InstalledSkill[] {
-  const scope: "global" | "project" = opts.global ? "global" : "project";
-  const out: InstalledSkill[] = [];
-  const seen = new Set<string>();
-  for (const agent of AGENTS) {
-    if (opts.global && agent.global === null) continue;
-    const dir = agentDir(agent.id, opts);
-    if (seen.has(dir)) continue;
-    seen.add(dir);
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      const skillMd = join(dir, entry, "SKILL.md");
-      if (!existsSync(skillMd) || !statSync(skillMd).isFile()) continue;
-      out.push({ name: entry, agent: agent.id, scope, path: join(dir, entry), raw: readFileSync(skillMd, "utf8") });
-    }
-  }
-  return out;
-}
+// Writing and enumerating installed skills lives in installer.ts (canonical
+// copy + per-agent links + lock file). This module only answers "where does
+// agent X keep its skills, and which agents does this machine have?".

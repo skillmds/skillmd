@@ -82,4 +82,16 @@ describe("formatSearchResult", () => {
     const out = formatSearchResult(BASE, 80);
     expect(out.split("\n")).toHaveLength(2);
   });
+
+  it("strips terminal escapes out of a registry description", () => {
+    const out = formatSearchResult({ slug: "o/n", title: "t", description: "evil\x1b[2Jtext" });
+    expect(out).toContain("eviltext");
+    expect(out).not.toContain("[2J");
+  });
+
+  it("strips terminal escapes out of the slug too", () => {
+    const out = formatSearchResult({ ...BASE, slug: "o\x1b]0;pwned\x07/n" }, 80);
+    expect(out).toContain("o/n");
+    expect(out).not.toContain("pwned");
+  });
 });

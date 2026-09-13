@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import pc from "picocolors";
 import { createClient } from "../api.js";
+import { safeText } from "../sanitize.js";
 
 interface SearchFlags {
   category?: string;
@@ -55,11 +56,13 @@ export function formatSearchResult(item: SearchItem, width: number = process.std
   const stars = item.repo_stars != null ? pc.dim(`★ ${formatStars(item.repo_stars)}`) : "";
   const check = item.verified ? pc.green("✓") : "";
   const pack = item.type === "pack" ? pc.dim("[pack]") : "";
-  const head = [pc.bold(item.slug), stars, check, pack].filter(Boolean).join(" ");
+  // slug/title/description come from the registry: strip escapes before they
+  // reach a terminal, then colour (safeText would eat our own colour codes).
+  const head = [pc.bold(safeText(item.slug, 200)), stars, check, pack].filter(Boolean).join(" ");
 
   const indent = "  ";
   const lineWidth = Math.max(10, Math.min(width, MAX_LINE_WIDTH) - indent.length);
-  const desc = `${indent}${pc.dim(truncate(item.description ?? "", lineWidth))}`;
+  const desc = `${indent}${pc.dim(truncate(safeText(item.description ?? ""), lineWidth))}`;
 
   return `${head}\n${desc}`;
 }

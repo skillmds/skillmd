@@ -29,18 +29,31 @@ const defaultLoginDeps = (flags: LoginFlags): LoginDeps =>
     return p.isCancel(answer) ? null : answer;
   });
 
+/** In --json mode stdout carries one document and nothing else: every early
+ *  return goes through here so a hint or a cancellation never leaks plain text
+ *  into output a caller is parsing. */
+function finish(flags: { json?: boolean }, result: CmdResult, doc: unknown): CmdResult {
+  return flags.json ? { ...result, output: JSON.stringify(doc, null, 2) } : result;
+}
+
 export async function runLogin(flags: LoginFlags, deps: LoginDeps = defaultLoginDeps(flags)): Promise<CmdResult> {
   const env = flags.env ?? process.env;
   let token = flags.token;
   if (!token) {
     // Off a TTY (a pipe, CI, or an agent shell) a prompt would hang forever —
     // say what to pass instead and change nothing.
-    if (!deps.prompt) return { exitCode: 1, output: pc.red(nonInteractiveHint("--token <token> (or set SKILLMD_TOKEN)")) };
+    if (!deps.prompt) {
+      const error = nonInteractiveHint("--token <token> (or set SKILLMD_TOKEN)");
+      return finish(flags, { exitCode: 1, output: pc.red(error) }, { ok: false, error });
+    }
     const answer = await deps.prompt();
-    if (answer === null) return { exitCode: 0, output: pc.dim("Cancelled.") };
+    if (answer === null) return finish(flags, { exitCode: 0, output: pc.dim("Cancelled.") }, { ok: false, cancelled: true });
     token = answer;
   }
-  if (!token) return { exitCode: 1, output: pc.red("A token is required.") };
+  if (!token) {
+    const error = "A token is required.";
+    return finish(flags, { exitCode: 1, output: pc.red(error) }, { ok: false, error });
+  }
 
   const cfg = readConfig(flags.home);
   // Bind the token to the host it was issued for — it is never sent anywhere

@@ -55,6 +55,14 @@ describe("runRemove", () => {
     expect(r.exitCode).toBe(0);
     expect(readLock({ global: true, home }).skills).toEqual({});
   });
+  it("--all says so when the scope holds nothing, instead of printing a blank line", async () => {
+    const home = tmp();
+    const r = await runRemove([], { global: true, home, all: true, yes: true }, yes);
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toMatch(/No installed skills found in global scope\./);
+    const asJson = await runRemove([], { global: true, home, all: true, yes: true, json: true }, yes);
+    expect(JSON.parse(asJson.output)).toMatchObject({ ok: false, error: "No installed skills found in global scope." });
+  });
   it("asks for confirmation unless -y; a declined confirm removes nothing and exits 0", async () => {
     const home = await seed();
     let asked = 0;

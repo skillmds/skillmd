@@ -53,8 +53,8 @@ One parser now decides what a `<source>` argument means, and every command uses 
 
 ### Security
 
-- Every file in a registry bundle must carry a sha256 and match it, including companion files delivered by URL. A missing or mismatched hash refuses the install rather than writing unverifiable content.
-- Registry bundles are capped at **200 files / 20 MB**; every network call has a **30 s** timeout; temp directories are cleaned up on both the success and the failure path.
+- Every file in a registry bundle must carry a sha256 and match it, including companion files delivered by URL. A missing or mismatched hash refuses the install rather than writing unverifiable content. The one exception is the bundle's inline `SKILL.md`: the registry generates that file from the skill's stored record rather than storing it, so there is no hash to compare it against. Every other path, hashed or not, is either verified or refused.
+- Registry bundles are capped at **200 files / 20 MB**. Every registry, GitHub raw and gist request carries a **30 s** timeout; the repository download itself runs through `giget`, which takes no deadline — it is bounded instead by the pre-download size check against the GitHub tree API and by the same 200 files / 20 MB caps once the files are on disk. Temp directories are cleaned up on both the success and the failure path.
 - Terminal escape sequences are stripped from registry text before it is printed, so a description can never repaint your terminal.
 - Windows reserved device names (`con`, `nul`, `lpt1`, …) are refused as skill or file names.
 - The install-count `POST /api/skills/<owner>/<name>/install` (body `{"via":"cli"}`, nothing else) is documented in the README and skipped entirely when `SKILLMD_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` is set.

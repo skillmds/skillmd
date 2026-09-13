@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AGENTS, agentDir, agentRootExists, agentSupportsGlobal, canonicalDir, detectAgents, installedSkills, writeSkill } from "./agents.js";
+import { AGENTS, agentDir, agentRootExists, agentSupportsGlobal, canonicalDir, detectAgents } from "./agents.js";
 
 const tmps: string[] = [];
 function tmp(): string {
@@ -55,36 +55,6 @@ describe("detectAgents", () => {
     expect(detectAgents({ home })).toEqual(["openclaw", "kilo", "hermes-agent"]);
     expect(agentDir("openclaw", { global: true, home })).toBe(join(home, ".openclaw", "skills"));
     expect(agentDir("kilo", { global: true, home })).toBe(join(home, ".kilocode", "skills"));
-  });
-});
-
-describe("writeSkill + installedSkills", () => {
-  it("writes a skill and finds it", () => {
-    const cwd = tmp();
-    const target = agentDir("claude-code", { cwd });
-    mkdirSync(target, { recursive: true });
-    writeSkill("foo", [{ path: "SKILL.md", contents: "---\nname: foo\ndescription: d\n---\nbody" }], target);
-    const found = installedSkills({ cwd });
-    expect(found.map((s) => s.name)).toContain("foo");
-    expect(found[0]?.agent).toBe("claude-code");
-  });
-
-  it("refuses a skill name that escapes the target dir", () => {
-    const cwd = tmp();
-    const target = agentDir("claude-code", { cwd });
-    mkdirSync(target, { recursive: true });
-    expect(() =>
-      writeSkill("../../evil", [{ path: "SKILL.md", contents: "x" }], target),
-    ).toThrow(/unsafe skill name/);
-  });
-
-  it("refuses a per-file path that escapes the skill dir (zip-slip)", () => {
-    const cwd = tmp();
-    const target = agentDir("claude-code", { cwd });
-    mkdirSync(target, { recursive: true });
-    expect(() =>
-      writeSkill("ok", [{ path: "../../../etc/pwn", contents: "x" }], target),
-    ).toThrow(/unsafe path/);
   });
 });
 

@@ -11,6 +11,7 @@ import { runList } from "./list.js";
 import { runUpdate } from "./update.js";
 import { runRemove } from "./remove.js";
 import { banner } from "../ui.js";
+import { safeText } from "../sanitize.js";
 
 function bail(v: unknown): v is symbol {
   if (p.isCancel(v)) {
@@ -36,13 +37,16 @@ async function browseSearchResults(items: SearchItem[]): Promise<void> {
           // ANSI escapes and let soft-wrap break clack's frame accounting.
           const starsTxt = item.repo_stars != null ? ` ★${formatStars(item.repo_stars)}` : "";
           const checkTxt = item.verified ? " ✓" : "";
-          const plainLabel = `${item.slug}${starsTxt}${checkTxt}`;
-          const label = `${pc.bold(item.slug)}${starsTxt ? pc.dim(starsTxt) : ""}${checkTxt ? pc.green(checkTxt) : ""}`;
+          // Registry text: strip escapes before measuring or colouring it — an
+          // escape would both break the width accounting and repaint the frame.
+          const slugTxt = safeText(item.slug, 200);
+          const plainLabel = `${slugTxt}${starsTxt}${checkTxt}`;
+          const label = `${pc.bold(slugTxt)}${starsTxt ? pc.dim(starsTxt) : ""}${checkTxt ? pc.green(checkTxt) : ""}`;
           const hintWidth = Math.max(10, cols - plainLabel.length - 6);
           return {
             value: item.slug,
             label,
-            hint: truncate(item.description ?? "", hintWidth),
+            hint: truncate(safeText(item.description ?? ""), hintWidth),
           };
         }),
         { value: "__back", label: "← Back to menu" },
@@ -63,12 +67,15 @@ async function browseOneResult(item: SearchItem): Promise<void> {
   // Print the card once on entry; the loop below only re-renders the action
   // select so "Show page URL" and post-install status don't re-dump the note.
   const starsTxt = item.repo_stars != null ? `★ ${formatStars(item.repo_stars)} stars` : "";
+  const slugTxt = safeText(item.slug, 200);
+  // Every part of `meta` is derived from a number or a boolean, so only the
+  // description and the slug carry registry text into the card.
   const meta = [
     starsTxt,
     item.verified ? pc.green("✓ verified") : "unverified",
     item.type === "pack" ? "pack" : "",
   ].filter(Boolean).join(" · ");
-  p.note([item.description ?? "", pc.dim(meta)].join("\n"), item.slug);
+  p.note([safeText(item.description ?? ""), pc.dim(meta)].join("\n"), slugTxt);
 
   for (;;) {
     const action = await p.select({
@@ -83,13 +90,13 @@ async function browseOneResult(item: SearchItem): Promise<void> {
     if (p.isCancel(action) || action === "back") return;
 
     if (action === "url") {
-      p.log.message(pc.dim(`https://skillmd.com/skills/${item.slug}`));
+      p.log.message(pc.dim(`https://skillmd.com/skills/${slugTxt}`));
       continue;
     }
 
     // No spinner around runAdd: it may open its own clack confirm prompt for
     // unverified skills, and a live spinner garbles the terminal around prompts.
-    p.log.step(`Installing ${item.slug}…`);
+    p.log.step(`Installing ${slugTxt}…`);
     try {
       const run = await runAdd(item.slug, action === "global" ? { global: true } : { project: true });
       console.log(run.output);

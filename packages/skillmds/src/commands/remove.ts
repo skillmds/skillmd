@@ -44,16 +44,22 @@ export async function runRemove(names: string[], flags: RemoveFlags, deps: Remov
 
   const perScope = scopes.map((scope) => ({ scope, installed: listInstalled(scope) }));
   const allNames = [...new Set(perScope.flatMap((s) => s.installed.map((i) => i.name)))];
+  const nothingInstalled = `No installed skills found in ${where} scope.`;
   let targets = names;
-  if (flags.all) targets = allNames;
-  else if (targets.length === 0) {
+  if (flags.all) {
+    // Without this, an empty scope fell through to `known.length === 0` and
+    // printed a blank line before exiting 1 — say what happened instead.
+    if (allNames.length === 0) {
+      return finish(flags, { removed: [], exitCode: 1, output: pc.dim(nothingInstalled) }, { ok: false, error: nothingInstalled });
+    }
+    targets = allNames;
+  } else if (targets.length === 0) {
     if (!deps.pick) {
       const error = "Give one or more skill names, or --all.";
       return finish(flags, { removed: [], exitCode: 1, output: pc.red(`${error} `) + pc.dim(nonInteractiveHint("skill names and -y")) }, { ok: false, error });
     }
     if (allNames.length === 0) {
-      const error = `No installed skills found in ${where} scope.`;
-      return finish(flags, { removed: [], exitCode: 1, output: pc.dim(error) }, { ok: false, error });
+      return finish(flags, { removed: [], exitCode: 1, output: pc.dim(nothingInstalled) }, { ok: false, error: nothingInstalled });
     }
     const picked = await deps.pick({ names: allNames });
     if (!picked) return finish(flags, { removed: [], exitCode: 0, cancelled: true, output: pc.dim("Nothing removed.") }, { ok: true, removed: [], cancelled: true });

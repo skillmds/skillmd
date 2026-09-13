@@ -46,6 +46,22 @@ describe("runLogin", () => {
     expect(r.exitCode).toBe(1);
     expect(r.output).toMatch(/--token|SKILLMD_TOKEN/);
   });
+  it("--json keeps the off-TTY hint a JSON document", async () => {
+    const r = await runLogin({ home: tmp(), env: {}, json: true }, {});
+    expect(r.exitCode).toBe(1);
+    const doc = JSON.parse(r.output);
+    expect(doc.ok).toBe(false);
+    expect(doc.error).toMatch(/--token|SKILLMD_TOKEN/);
+  });
+  it("--json keeps a cancelled prompt a JSON document", async () => {
+    const r = await runLogin({ home: tmp(), env: {}, json: true }, { prompt: async () => null });
+    expect(JSON.parse(r.output)).toMatchObject({ ok: false, cancelled: true });
+  });
+  it("--json keeps an empty token answer a JSON document", async () => {
+    const r = await runLogin({ home: tmp(), env: {}, json: true }, { prompt: async () => "" });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.output).error).toMatch(/token is required/i);
+  });
   it("logout removes token and host; exit 0 even when nothing was stored", () => {
     const home = tmp();
     expect(runLogout({ home }).exitCode).toBe(0);
