@@ -629,7 +629,6 @@ export function addCommand(): Command {
     .option("-l, --list", "list the skills a source contains without installing")
     .addOption(new Option("--mode <mode>", "link (junction/symlink into each agent dir, default) or copy").choices(["link", "copy"]).default("link"))
     .option("--force", "replace a skill installed from a different source, or an untracked directory")
-    .option("--insecure-http", "allow an http:// --api base (local development)")
     // deprecated spelling of --mode copy, kept so older install snippets work.
     .addOption(new Option("--copy", "alias of --mode copy").hideHelp())
     .option("-y, --yes", "skip prompts; scope is auto-detected (project if this folder looks like a project, else global)")

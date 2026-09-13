@@ -6,13 +6,13 @@ import pc from "picocolors";
 import { lint } from "@skillmds/core";
 import { createClient, fetchBundle, skillMdFor } from "../api.js";
 import type { RegistrySkill } from "../api.js";
-import { resolveSource, resolveTree } from "../source.js";
+import { resolvePackFiles, resolveSource, resolveTree } from "../source.js";
 import { gigetInput, parseSource } from "../sources.js";
 import { digestOf, installSkill, listInstalled } from "../installer.js";
 import type { SkillFileInput } from "../installer.js";
 import { readLock } from "../lock.js";
 import { scopesFor } from "../env.js";
-import { resolvePackFiles } from "../source.js";
+import { GLYPH } from "../ui.js";
 
 export interface UpdateFlags { global?: boolean; project?: boolean; check?: boolean; yes?: boolean; json?: boolean; token?: string; api?: string; insecureHttp?: boolean; cwd?: string; home?: string }
 export interface Latest { files: SkillFileInput[]; commit_sha?: string }
@@ -99,7 +99,7 @@ export async function runUpdate(names: string[], flags: UpdateFlags, deps: Updat
       if (entry.source.startsWith("local:")) { lines.push(pc.dim(`- ${label} local source — not auto-updated`)); continue; }
       try {
         const latest = await deps.fetchLatest(entry.source, flags, s.name);
-        if (!latest) { failed.push(s.name); lines.push(pc.red(`✗ ${label} no longer available upstream (${entry.source})`)); continue; }
+        if (!latest) { failed.push(s.name); lines.push(pc.red(`${GLYPH.blocked} ${label} no longer available upstream (${entry.source})`)); continue; }
         // A registry pin is authoritative: same commit, same skill, no digest needed.
         if (entry.source.startsWith("registry:") && latest.commit_sha && entry.commit_sha && latest.commit_sha === entry.commit_sha) { lines.push(pc.dim(`- ${label} up to date`)); continue; }
         if (digestOf(latest.files) === entry.digest) { lines.push(pc.dim(`- ${label} up to date`)); continue; }
@@ -107,13 +107,13 @@ export async function runUpdate(names: string[], flags: UpdateFlags, deps: Updat
         const md = latest.files.find((f) => f.path === "SKILL.md");
         const raw = md ? (typeof md.contents === "string" ? md.contents : md.contents.toString("utf8")) : "";
         const result = lint(raw, { slug: s.name });
-        if (!result.ok) { failed.push(s.name); lines.push(pc.red(`✗ ${label} update failed lint (${result.diagnostics.filter((d) => d.severity === "error").map((d) => d.id).join(", ")}) — kept the installed version`)); continue; }
+        if (!result.ok) { failed.push(s.name); lines.push(pc.red(`${GLYPH.blocked} ${label} update failed lint (${result.diagnostics.filter((d) => d.severity === "error").map((d) => d.id).join(", ")}) — kept the installed version`)); continue; }
         await installSkill({ name: s.name, files: latest.files, source: entry.source, commit_sha: latest.commit_sha, scope, agents: entry.agents, explicitAgents: true, mode: Object.values(entry.mode).includes("copy") ? "copy" : "link" });
         updated.push(s.name);
-        lines.push(pc.green(`✓ ${label} updated`));
+        lines.push(pc.green(`${GLYPH.ok} ${label} updated`));
       } catch (e) {
         failed.push(s.name);
-        lines.push(pc.red(`✗ ${label} ${e instanceof Error ? e.message : String(e)}`));
+        lines.push(pc.red(`${GLYPH.blocked} ${label} ${e instanceof Error ? e.message : String(e)}`));
       }
     }
   }

@@ -100,6 +100,22 @@ describe("handleCall", () => {
     expect(r.isError).toBeFalsy();
     expect(r.structuredContent).toEqual({ slug: "o/n", title: "T", type: "pack", verified: true, category_slug: "x" });
   });
+  // The body IS the payload: flattening its newlines and cutting it at 2000
+  // chars hands the caller a mangled document. Escapes still go.
+  it("skillmd_get hands back body_md/raw_md verbatim, minus terminal escapes", async () => {
+    const body = "# Title\n\n" + "A long instruction line that keeps going. ".repeat(80);
+    const r = await handleCall(
+      "skillmd_get",
+      { slug: "o/n" },
+      ctx({ api: (async () => ({ slug: "o/n", raw_md: "line1\nline2\x1b[2J", body_md: body, title: "T\nT2" })) as ToolContext["api"] }),
+    );
+    const out = r.structuredContent as Record<string, string>;
+    expect(out.raw_md).toBe("line1\nline2");
+    // well past safeText's 2000-char cap, and its newlines are intact
+    expect(out.body_md).toBe(body);
+    // every other string is still one flattened, capped line
+    expect(out.title).toBe("T T2");
+  });
   it("skillmd_trending passes range, category and limit through to the leaderboard", async () => {
     let seen = "";
     const r = await handleCall(

@@ -11,6 +11,7 @@ import type { ScopeOptions } from "../agents.js";
 import { isSkillDirOrLink, listInstalled, uninstallSkill } from "../installer.js";
 import { readLock, upsertEntry } from "../lock.js";
 import { isInteractive, nonInteractiveHint, scopesFor } from "../env.js";
+import { GLYPH } from "../ui.js";
 
 export interface RemoveFlags { global?: boolean; project?: boolean; agent?: string[]; all?: boolean; yes?: boolean; json?: boolean; cwd?: string; home?: string }
 export interface RemoveDeps {
@@ -100,7 +101,7 @@ export async function runRemove(names: string[], flags: RemoveFlags, deps: Remov
           // The canonical copy is the skill itself, not a link into an agent dir:
           // deleting it here would take the skill away from every other agent.
           if (resolve(dir) === canonRoot || entry?.mode[a] === "canonical") {
-            lines.push(pc.dim(`↷ ${name}: ${a} reads the canonical copy directly — unlinking is a no-op (use remove without -a to delete the skill)`));
+            lines.push(pc.dim(`${GLYPH.skip} ${name}: ${a} reads the canonical copy directly — unlinking is a no-op (use remove without -a to delete the skill)`));
             skipped.push({ skill: name, agent: a, scope: scopeLabel(scope), reason: "reads the canonical copy directly" });
             acted = true;
             continue;
@@ -111,7 +112,7 @@ export async function runRemove(names: string[], flags: RemoveFlags, deps: Remov
             rmSync(pth, { recursive: true, force: true });
             removed.push(pth);
             acted = true;
-            lines.push(pc.green(`✓ removed ${name} from ${a}`) + tag);
+            lines.push(pc.green(`${GLYPH.ok} removed ${name} from ${a}`) + tag);
           }
         }
         if (!acted) lines.push(pc.yellow(`- ${name} is not linked into ${flags.agent.join(", ")}`) + tag);
@@ -130,7 +131,7 @@ export async function runRemove(names: string[], flags: RemoveFlags, deps: Remov
       const r = uninstallSkill(name, scope);
       removed.push(...r.removed);
       changed++;
-      lines.push(pc.green(`✓ removed ${name}`) + tag + pc.dim(` (${r.removed.length} path${r.removed.length === 1 ? "" : "s"}${r.untracked ? ", untracked" : ""})`));
+      lines.push(pc.green(`${GLYPH.ok} removed ${name}`) + tag + pc.dim(` (${r.removed.length} path${r.removed.length === 1 ? "" : "s"}${r.untracked ? ", untracked" : ""})`));
     }
   }
   const exitCode: 0 | 1 = changed ? 0 : 1;

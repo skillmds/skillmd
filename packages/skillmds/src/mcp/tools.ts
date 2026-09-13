@@ -3,7 +3,7 @@
 // registry goes through the ToolContext, so a test can drive every tool
 // without a network or a filesystem.
 import { lint, skillMdFor } from "@skillmds/core";
-import { safeText } from "../sanitize.js";
+import { safeText, stripTerminalEscapes } from "../sanitize.js";
 import { ITEMS, LINT_RESULT, INSTALL_RESULT, OMIT_FIELDS } from "./schemas.js";
 import { installFromRegistry } from "./install.js";
 import { notice, parseSlug } from "./types.js";
@@ -218,8 +218,19 @@ const clean = (items: Record<string, unknown>[] | undefined): Record<string, unk
  *  the one tool whose job is the whole record, and the fields the list tools
  *  trim (type, verified, category_slug) are exactly what an agent weighs
  *  before it installs. */
+// The skill's body is the payload the caller actually asked for: flattening its
+// newlines and cutting it at 2000 chars hands back a mangled document. Those two
+// fields keep every byte except the terminal escapes; every other string stays
+// one safe line.
+const VERBATIM_FIELDS = new Set(["body_md", "raw_md"]);
+
 const sanitizeRecord = (skill: Record<string, unknown>): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(skill).map(([k, v]) => [k, typeof v === "string" ? safeText(v, 2000) : v]));
+  Object.fromEntries(
+    Object.entries(skill).map(([k, v]) => {
+      if (typeof v !== "string") return [k, v];
+      return [k, VERBATIM_FIELDS.has(k) ? stripTerminalEscapes(v) : safeText(v, 2000)];
+    }),
+  );
 
 export async function handleCall(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   try {
