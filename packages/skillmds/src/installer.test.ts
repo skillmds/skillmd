@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync, lstatSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync, lstatSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installSkill, uninstallSkill, digestOf } from "./installer.js";
+import { installSkill, uninstallSkill, digestOf, listInstalled, defaultLink } from "./installer.js";
 import { readLock } from "./lock.js";
 
 const tmps: string[] = [];
@@ -93,6 +93,80 @@ describe("installSkill", () => {
     await expect(installSkill({ name: "con", files, source: "x", scope: { global: true, home }, agents: ["claude-code"] })).rejects.toThrow(/reserved/);
     await expect(installSkill({ name: "../x", files, source: "x", scope: { global: true, home }, agents: ["claude-code"] })).rejects.toThrow(/unsafe skill name/);
   });
+  it("never deletes a non-skill dir when linking fails (copy fallback)", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".claude", "skills", "demo"), { recursive: true });
+    writeFileSync(join(home, ".claude", "skills", "demo", "my-notes.txt"), "keep me");
+    await expect(installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"],
+      link: () => { throw Object.assign(new Error("EEXIST"), { code: "EEXIST" }); } })).rejects.toThrow();
+    expect(existsSync(join(home, ".claude", "skills", "demo", "my-notes.txt"))).toBe(true);
+  });
+
+  it("rethrows the link error instead of copying over a non-link path, even under --force", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".claude", "skills", "demo"), { recursive: true });
+    writeFileSync(join(home, ".claude", "skills", "demo", "my-notes.txt"), "keep me");
+    await expect(installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"], force: true,
+      link: () => { throw Object.assign(new Error("EEXIST"), { code: "EEXIST" }); } })).rejects.toThrow(/EEXIST/);
+    expect(readFileSync(join(home, ".claude", "skills", "demo", "my-notes.txt"), "utf8")).toBe("keep me");
+  });
+
+  it("removes a half-created link and falls back to a copy", async () => {
+    const home = tmp();
+    let n = 0;
+    const r = await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"],
+      link: (target, linkPath) => { n++; defaultLink(target, linkPath); throw new Error("EPERM"); } });
+    expect(n).toBe(1);
+    expect(r.targets[0]?.mode).toBe("copy");
+    expect(lstatSync(join(home, ".claude", "skills", "demo")).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(home, ".claude", "skills", "demo", "SKILL.md"), "utf8")).toContain("demo");
+  });
+
+  it("force gate covers untracked per-agent dirs, not just the canonical copy", async () => {
+    const home = tmp();
+    const hand = join(home, ".claude", "skills", "mine");
+    mkdirSync(hand, { recursive: true });
+    writeFileSync(join(hand, "SKILL.md"), "HANDWRITTEN");
+    await expect(installSkill({ name: "mine", files, source: "registry:o/mine", scope: { global: true, home }, agents: ["claude-code"] }))
+      .rejects.toThrow(/not tracked[\s\S]*--force/);
+    expect(readFileSync(join(hand, "SKILL.md"), "utf8")).toBe("HANDWRITTEN");
+    const r = await installSkill({ name: "mine", files, source: "registry:o/mine", scope: { global: true, home }, agents: ["claude-code"], force: true });
+    expect(r.replaced).toBe("untracked");
+    expect(readFileSync(join(hand, "SKILL.md"), "utf8")).toContain("name: demo");
+  });
+
+  it("leaves no .old-* or .tmp-* dirs behind after a re-install", async () => {
+    const home = tmp();
+    const canonRoot = join(home, ".agents", "skills");
+    await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] });
+    await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] });
+    expect(readdirSync(canonRoot)).toEqual(["demo"]);
+  });
+
+  it("reports an agent sharing an already-written dir as a target, not as absent", async () => {
+    const cwd = tmp(); mkdirSync(join(cwd, ".github"));
+    const r = await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: false, cwd }, agents: ["github-copilot", "claude-code"] });
+    expect(r.skipped).toEqual([]);
+    const copilot = r.targets.find((t) => t.agent === "github-copilot");
+    const claude = r.targets.find((t) => t.agent === "claude-code");
+    expect(copilot?.path).toBe(join(cwd, ".claude", "skills", "demo"));
+    expect(claude?.path).toBe(copilot?.path);
+    expect(claude?.mode).toBe(copilot?.mode);
+  });
+
+  it("refuses a skill with no files", async () => {
+    const home = tmp();
+    await expect(installSkill({ name: "demo", files: [], source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] }))
+      .rejects.toThrow(/skill has no files/);
+  });
+
+  it("refuses file names that end in a dot or a space", async () => {
+    const home = tmp();
+    await expect(installSkill({ name: "demo", files: [{ path: "trailing./x.md", contents: "x" }], source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] }))
+      .rejects.toThrow(/invalid file name/);
+    await expect(installSkill({ name: "demo", files: [{ path: "trailing /x.md", contents: "x" }], source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] }))
+      .rejects.toThrow(/invalid file name/);
+  });
 });
 
 describe("uninstallSkill", () => {
@@ -120,5 +194,52 @@ describe("digestOf", () => {
   it("is order-independent and content-sensitive", () => {
     expect(digestOf(files)).toBe(digestOf([...files].reverse()));
     expect(digestOf(files)).not.toBe(digestOf([{ path: "SKILL.md", contents: "other" }]));
+  });
+
+  it("hashes windows and posix separators the same", () => {
+    expect(digestOf([{ path: "a\\b.md", contents: "x" }])).toBe(digestOf([{ path: "a/b.md", contents: "x" }]));
+  });
+});
+
+describe("listInstalled", () => {
+  it("reports a tracked skill at its canonical path with the lock's agents", async () => {
+    const home = tmp();
+    await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: true, home }, agents: ["claude-code"] });
+    const found = listInstalled({ global: true, home }).find((s) => s.name === "demo");
+    expect(found?.tracked).toBe(true);
+    expect(found?.path).toBe(join(home, ".agents", "skills", "demo"));
+    expect(found?.agents).toEqual(["claude-code"]);
+    expect(found?.source).toBe("registry:o/demo");
+    expect(found?.scope).toBe("global");
+  });
+
+  it("reports an untracked 1.1.x-style copy as tracked:false with mode copy", () => {
+    const home = tmp();
+    mkdirSync(join(home, ".claude", "skills", "old"), { recursive: true });
+    writeFileSync(join(home, ".claude", "skills", "old", "SKILL.md"), "x");
+    const found = listInstalled({ global: true, home }).find((s) => s.name === "old");
+    expect(found?.tracked).toBe(false);
+    expect(found?.path).toBe(join(home, ".claude", "skills", "old"));
+    expect(found?.mode).toEqual({ "claude-code": "copy" });
+  });
+
+  it("ignores a dangling link whose target is gone", () => {
+    const home = tmp();
+    const target = join(home, ".agents", "skills", "ghost");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, "SKILL.md"), "x");
+    mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+    defaultLink(target, join(home, ".claude", "skills", "ghost"));
+    rmSync(target, { recursive: true, force: true });
+    expect(listInstalled({ global: true, home }).map((s) => s.name)).toEqual([]);
+  });
+
+  it("sorts by name", () => {
+    const home = tmp();
+    for (const n of ["zeta", "alpha", "mid"]) {
+      mkdirSync(join(home, ".claude", "skills", n), { recursive: true });
+      writeFileSync(join(home, ".claude", "skills", n, "SKILL.md"), "x");
+    }
+    expect(listInstalled({ global: true, home }).map((s) => s.name)).toEqual(["alpha", "mid", "zeta"]);
   });
 });

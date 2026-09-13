@@ -52,7 +52,12 @@ export function assertSafeName(name: string): void {
 
 export function digestOf(files: SkillFileInput[]): string {
   const h = createHash("sha256");
-  for (const f of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+  // Codepoint order, not locale order: the digest is a wire value that must be
+  // identical on every machine. Separators are normalised so the same skill
+  // hashes the same whether its paths came from a zip (/) or from Windows (\\).
+  const norm = files.map((f) => ({ path: f.path.replace(/\\/g, "/"), contents: f.contents }));
+  norm.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  for (const f of norm) {
     h.update(f.path).update("\0").update(typeof f.contents === "string" ? Buffer.from(f.contents) : f.contents).update("\0");
   }
   return `sha256:${h.digest("hex")}`;
@@ -60,6 +65,8 @@ export function digestOf(files: SkillFileInput[]): string {
 
 /** Write files into `dest` (must not exist), refusing anything that escapes it. */
 function writeTree(dest: string, files: SkillFileInput[]): void {
+  // An empty file list would stage an empty dir and swap it over a good install.
+  if (files.length === 0) throw new Error("skill has no files");
   mkdirSync(dest, { recursive: true });
   const root = resolve(dest);
   for (const f of files) {
@@ -67,6 +74,9 @@ function writeTree(dest: string, files: SkillFileInput[]): void {
     if (fp !== root && !fp.startsWith(root + sep)) throw new Error(`refused unsafe path in skill: ${f.path}`);
     const parts = relative(root, fp).split(sep);
     if (parts.some((p) => WINDOWS_RESERVED.test(p))) throw new Error(`refused reserved file name in skill: ${f.path}`);
+    // Windows silently strips a trailing dot or space from a path segment, so
+    // "notes." and "notes" become the same file — a rename/overwrite trick.
+    if (parts.some((p) => /[. ]$/.test(p))) throw new Error(`refused invalid file name in skill: ${f.path}`);
     mkdirSync(dirname(fp), { recursive: true });
     writeFileSync(fp, f.contents);
   }
@@ -90,6 +100,14 @@ function isSkillDirOrLink(p: string): boolean {
   } catch { return false; }
 }
 
+/** existsSync() follows links, so a dangling link reads as absent; lstat does not. */
+function pathExists(p: string): boolean {
+  try {
+    lstatSync(p);
+    return true;
+  } catch { return false; }
+}
+
 /** Remove `p` only if it is a link or a directory that holds a SKILL.md. */
 function removeSkillPath(p: string): boolean {
   if (!isSkillDirOrLink(p)) return false;
@@ -97,6 +115,9 @@ function removeSkillPath(p: string): boolean {
   return true;
 }
 
+// async even though every step is synchronous today: callers already await it,
+// and file providers will grow network-backed (registry fetch, lazy blobs)
+// without a breaking change to the public contract.
 export async function installSkill(req: InstallRequest): Promise<InstallResult> {
   assertSafeName(req.name);
   const scope = req.scope;
@@ -117,6 +138,21 @@ export async function installSkill(req: InstallRequest): Promise<InstallResult> 
     replaced = "untracked";
   }
 
+  // The same gate for the per-agent dirs: a hand-made ~/.claude/skills/<name>
+  // is the user's data even when nothing sits in the canonical root yet.
+  if (!prev) {
+    for (const agentId of req.agents) {
+      if (scope.global && !agentSupportsGlobal(agentId)) continue;
+      const dir = agentDir(agentId, scope);
+      if (resolve(dir) === resolve(canonRoot)) continue;   // covered by the canonical gate above
+      if (!scope.global && !req.explicitAgents && !agentRootExists(agentId, cwd)) continue;
+      const p = join(dir, req.name);
+      if (!pathExists(p) || lstatSync(p).isSymbolicLink()) continue;
+      if (!req.force) throw new Error(`"${req.name}" exists at ${p} but is not tracked by skillmd; pass --force to replace it`);
+      replaced = "untracked";
+    }
+  }
+
   // Stage, verify, swap.
   const staging = `${canonical}.tmp-${process.pid}`;
   rmSync(staging, { recursive: true, force: true });
@@ -126,9 +162,21 @@ export async function installSkill(req: InstallRequest): Promise<InstallResult> 
     rmSync(staging, { recursive: true, force: true });
     throw e;
   }
-  rmSync(canonical, { recursive: true, force: true });
+  // Swap by rename, never by delete-then-write: if the rename fails there is
+  // still a complete skill at `canonical` to put back.
   mkdirSync(canonRoot, { recursive: true });
-  renameSync(staging, canonical);
+  const old = `${canonical}.old-${process.pid}`;
+  rmSync(old, { recursive: true, force: true });
+  let movedAside = false;
+  if (pathExists(canonical)) { renameSync(canonical, old); movedAside = true; }
+  try {
+    renameSync(staging, canonical);
+  } catch (e) {
+    if (movedAside && pathExists(old)) renameSync(old, canonical);
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
+  }
+  if (movedAside) rmSync(old, { recursive: true, force: true });
 
   const link = req.link ?? defaultLink;
   const targets: InstallTarget[] = [];
@@ -140,12 +188,15 @@ export async function installSkill(req: InstallRequest): Promise<InstallResult> 
     if (scope.global && !agentSupportsGlobal(agentId)) { skipped.push({ agent: agentId, reason: "project-only agent" }); continue; }
     const dir = agentDir(agentId, scope);
     if (resolve(dir) === resolve(canonRoot)) { targets.push({ agent: agentId, path: canonical, mode: "canonical" }); modes[agentId] = "canonical"; continue; }
-    if (!scope.global && !req.explicitAgents && !agentRootExists(agentId, cwd)) {
-      skipped.push({ agent: agentId, reason: `not present in this project (no ${agentById(agentId).projectRoots[0]}/ dir) — pass -a ${agentId} to add it` });
-      continue;
-    }
+    // Dedupe first: an agent sharing a dir we already wrote is a target, not an
+    // absentee — .claude/skills exists by now even if this agent's own root does not.
     const first = seenDirs.get(resolve(dir));
     if (first) { targets.push({ agent: agentId, path: first.path, mode: first.mode }); modes[agentId] = first.mode; continue; }
+    if (!scope.global && !req.explicitAgents && !agentRootExists(agentId, cwd)) {
+      const a = agentById(agentId);
+      skipped.push({ agent: agentId, reason: `not present in this project (no ${a.projectRoots[0] ?? a.project[0]}/ dir) — pass -a ${agentId} to add it` });
+      continue;
+    }
     const linkPath = join(dir, req.name);
     removeSkillPath(linkPath);
     let mode: LinkMode;
@@ -156,8 +207,13 @@ export async function installSkill(req: InstallRequest): Promise<InstallResult> 
     } else {
       try {
         mode = link(canonical, linkPath);
-      } catch {
-        rmSync(linkPath, { recursive: true, force: true });
+      } catch (e) {
+        // Only a half-created link is ours to clear. Anything else at linkPath is
+        // the user's — copying over it would destroy data, so surface the failure.
+        if (pathExists(linkPath)) {
+          if (!lstatSync(linkPath).isSymbolicLink()) throw e;
+          rmSync(linkPath, { recursive: true, force: true });
+        }
         mkdirSync(dir, { recursive: true });
         cpSync(canonical, linkPath, { recursive: true });
         mode = "copy";
