@@ -114,6 +114,13 @@ describe("1.2 agent table", () => {
     mkdirSync(join(cwd2, ".codex"));
     expect(agentRootExists("codex", cwd2)).toBe(true);
   });
+  it("the shared canonical .agents root never marks an agent present", () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".agents"));
+    expect(agentRootExists("gemini-cli", cwd)).toBe(false);
+    mkdirSync(join(cwd, ".gemini"));
+    expect(agentRootExists("gemini-cli", cwd)).toBe(true);
+  });
   it("project-only agents report no global support", () => {
     expect(agentSupportsGlobal("eve")).toBe(false);
     expect(agentSupportsGlobal("claude-code")).toBe(true);

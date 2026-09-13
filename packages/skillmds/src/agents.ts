@@ -143,9 +143,12 @@ export function agentDir(agentId: string, opts: ScopeOptions = {}): string {
   return join(opts.home ?? homedir(), ...agent.global);
 }
 
-/** Is this agent already present in the project (so writing its dir is not litter)? */
+/** Is this agent already present in the project (so writing its dir is not litter)?
+ *  Judged only by agent-specific roots: the shared canonical root (`.agents`) is
+ *  written for every install, so counting it would mark every agent that lists it
+ *  as present on the very same run — exactly the litter this rule exists to stop. */
 export function agentRootExists(agentId: string, cwd: string): boolean {
-  return agentById(agentId).projectRoots.some((r) => isDir(join(cwd, r)));
+  return agentById(agentId).projectRoots.some((r) => r !== CANONICAL[0] && isDir(join(cwd, r)));
 }
 
 function isDir(p: string): boolean {

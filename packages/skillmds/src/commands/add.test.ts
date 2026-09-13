@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAdd, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
@@ -70,6 +70,21 @@ describe("runAdd lint gate", () => {
 });
 
 const VALID = `---\nname: demo\ndescription: A perfectly fine demo skill for testing installs.\n---\n\n# Demo\n\n${"body ".repeat(50)}`;
+
+describe("local directory sources", () => {
+  it("installs every file of a local skill dir, not just SKILL.md", async () => {
+    const src = join(tmp(), "demo");
+    mkdirSync(join(src, "references"), { recursive: true });
+    writeFileSync(join(src, "SKILL.md"), VALID);
+    writeFileSync(join(src, "references", "a.md"), "A");
+    const home = tmp();
+    // Real default deps: a local path never touches the network, and the
+    // default prompt getters return undefined off a TTY.
+    const r = await runAdd(src, { cwd: tmp(), home, global: true, yes: true, agent: ["claude-code"], env: {} });
+    expect(r.exitCode).toBe(0);
+    expect(readFileSync(join(home, ".agents", "skills", "demo", "references", "a.md"), "utf8")).toBe("A");
+  });
+});
 
 describe("pack installs", () => {
   it("writes every file of a pack candidate", async () => {

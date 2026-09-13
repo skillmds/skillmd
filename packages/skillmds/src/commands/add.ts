@@ -2,12 +2,12 @@ import { Command, Option } from "commander";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
 import type { RegistrySkill } from "../api.js";
-import { resolveSource, resolveTree } from "../source.js";
+import { collectFiles, resolveSource, resolveTree } from "../source.js";
 import type { TreeFile } from "../source.js";
 import { AGENTS, agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
 import { installSkill } from "../installer.js";
@@ -193,7 +193,14 @@ const defaultDeps: AddDeps = {
     // registry slug gets the registry-first treatment below.
     if (spec.kind !== "slug") {
       const rs = await resolveSource(argWithRef(spec, arg, flags.ref));
-      return rs.map((r) => ({ name: r.slug, raw: r.raw, slug: r.slug, source }));
+      // A local skill is a directory on disk, so install the whole of it —
+      // references/, scripts/, assets — not just its SKILL.md. Remote sources
+      // (gist, GitHub) carry no `file` and still install SKILL.md only;
+      // resolveTree() is the path to giving them full trees as well.
+      return rs.map((r) => ({
+        name: r.slug, raw: r.raw, slug: r.slug, source,
+        ...(spec.kind === "local" && r.file ? { files: collectFiles(dirname(r.file), dirname(r.file)) } : {}),
+      }));
     }
     // Registry failure other than a 404. A 404 means "not a registry slug" and
     // the GitHub fallback is the intended path; anything else (DNS failure,

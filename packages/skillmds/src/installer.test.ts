@@ -33,6 +33,19 @@ describe("installSkill", () => {
     expect(r.skipped[0]?.reason).toMatch(/not present in this project/);
   });
 
+  it("the canonical .agents dir this install writes never counts as agent presence", async () => {
+    const cwd = tmp(); mkdirSync(join(cwd, ".claude")); mkdirSync(join(cwd, ".git"));
+    const agents = ["claude-code", "gemini-cli", "antigravity", "droid", "codex"];
+    const litter = [".gemini", ".agent", ".factory"];
+    const r = await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: false, cwd }, agents });
+    for (const d of litter) expect(existsSync(join(cwd, d))).toBe(false);
+    expect(r.targets.find((t) => t.agent === "codex")?.mode).toBe("canonical");
+    expect(existsSync(join(cwd, ".claude", "skills", "demo"))).toBe(true);
+    // A second install runs with .agents/ already on disk — still no litter.
+    await installSkill({ name: "demo2", files, source: "registry:o/demo2", scope: { global: false, cwd }, agents });
+    for (const d of litter) expect(existsSync(join(cwd, d))).toBe(false);
+  });
+
   it("explicit agents (-a) bypass the litter rule", async () => {
     const cwd = tmp();
     await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: false, cwd }, agents: ["cursor"], explicitAgents: true });
