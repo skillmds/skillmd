@@ -7,8 +7,7 @@ import { runSearch, formatStars, truncate } from "./search.js";
 import type { SearchItem } from "./search.js";
 import { runAdd } from "./add.js";
 import { initSkill } from "./init.js";
-import { installedSkills } from "../agents.js";
-import { parseSkillMd } from "@skillmds/core";
+import { runList } from "./list.js";
 
 function bail(v: unknown): v is symbol {
   if (p.isCancel(v)) {
@@ -176,21 +175,8 @@ export async function runInteractive(): Promise<void> {
       break;
     }
     case "list": {
-      // project and global are separate scopes in installedSkills — show both
-      const skills = [...installedSkills({}), ...installedSkills({ global: true })];
-      if (skills.length === 0) {
-        p.log.info("No installed skills found (checked this folder and your user directory).");
-      } else {
-        p.log.message(
-          skills
-            .map((sk) => {
-              const parsed = parseSkillMd(sk.raw);
-              const desc = "error" in parsed ? pc.red(`(invalid SKILL.md — ${parsed.error})`) : pc.dim(parsed.description.slice(0, 70));
-              return `${pc.bold(sk.name)} ${pc.dim(`[${sk.agent}/${sk.scope}]`)}\n  ${desc}`;
-            })
-            .join("\n"),
-        );
-      }
+      // runList already merges the project and global scopes into one table.
+      console.log(runList({}).output);
       break;
     }
     case "help": {
