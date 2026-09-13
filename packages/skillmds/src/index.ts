@@ -32,6 +32,27 @@ const program = new Command("skillmd")
   .option("--api <url>", "override the registry API base URL")
   .option("--insecure-http", "allow an http:// --api base (local development only)");
 
+// Commands are registered in the order a person meets them (quality, then
+// registry, then publish) — alphabetising that list hides the shape.
+program.configureHelp({ sortSubcommands: false });
+
+program.addHelpText("after", `
+Examples:
+  $ skillmd add anthropic/pdf                  install from the registry (asks project vs global)
+  $ skillmd add owner/repo/skills/x#main -g    a GitHub subfolder at a ref, into your user dirs
+  $ skillmd add ./my-skill -a claude-code -p   a local skill into this project for one agent
+  $ skillmd add anthropic/pdf -y --json        non-interactive, machine-readable
+  $ skillmd list                               everything installed, project and global
+  $ skillmd check                              which installed skills have updates
+  $ skillmd update -g                          update your user-level skills
+  $ skillmd remove pdf                         remove a skill from every agent
+
+Quality:   lint  scan  rules  init
+Registry:  search  info  add  list  remove  update  check
+Publish:   publish  login  logout
+
+Docs: https://skillmd.com/docs/cli`);
+
 // A token on the command line lands in shell history and in every `ps` listing
 // on the machine. Warn once, on a terminal only, so piped/JSON output stays clean.
 program.hook("preAction", (thisCmd) => {

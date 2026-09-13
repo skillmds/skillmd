@@ -8,6 +8,9 @@ import type { SearchItem } from "./search.js";
 import { runAdd } from "./add.js";
 import { initSkill } from "./init.js";
 import { runList } from "./list.js";
+import { runUpdate } from "./update.js";
+import { runRemove } from "./remove.js";
+import { banner } from "../ui.js";
 
 function bail(v: unknown): v is symbol {
   if (p.isCancel(v)) {
@@ -100,7 +103,7 @@ async function browseOneResult(item: SearchItem): Promise<void> {
 }
 
 export async function runInteractive(): Promise<void> {
-  p.intro(pc.bgCyan(pc.black(" skillmd ")));
+  p.intro(banner());
 
   // Menu loops until Quit/cancel so one action doesn't silently end the session.
   for (;;) {
@@ -110,8 +113,11 @@ export async function runInteractive(): Promise<void> {
       { value: "lint", label: "Lint a skill", hint: "validate a SKILL.md" },
       { value: "scan", label: "Security scan", hint: "scripts, network, secrets" },
       { value: "search", label: "Search the registry" },
+      { value: "install", label: "Install a skill", hint: "registry slug, GitHub URL or local path" },
       { value: "init", label: "Create a new skill" },
       { value: "list", label: "List installed skills" },
+      { value: "update", label: "Update installed skills" },
+      { value: "remove", label: "Remove skills" },
       { value: "help", label: "Show all commands" },
       { value: "quit", label: "Quit" },
     ],
@@ -174,9 +180,46 @@ export async function runInteractive(): Promise<void> {
       }
       break;
     }
+    case "install": {
+      const src = await p.text({ message: "Skill source", placeholder: "owner/name, https://github.com/…, or ./path" });
+      if (bail(src)) break;
+      // runAdd runs its own scope/agent prompts — no flags to force its hand.
+      try {
+        const run = await runAdd(String(src), {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      break;
+    }
     case "list": {
       // runList already merges the project and global scopes into one table.
       console.log(runList({}).output);
+      break;
+    }
+    case "update": {
+      try {
+        const run = await runUpdate([], {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      break;
+    }
+    case "remove": {
+      // runRemove brings its own picker and confirmation.
+      try {
+        const run = await runRemove([], {});
+        console.log(run.output);
+        process.exitCode = run.exitCode;
+      } catch (err) {
+        p.log.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
       break;
     }
     case "help": {

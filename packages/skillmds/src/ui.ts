@@ -1,6 +1,12 @@
 // Shared terminal decoration, rendering, and exit-code policy for quality commands.
+import { homedir } from "node:os";
+import { relative, resolve, sep } from "node:path";
 import pc from "picocolors";
 import type { LintResult, Severity } from "@skillmds/core";
+import type { InstallTarget } from "./installer.js";
+
+/** Where to measure a path from when shortening it for display. */
+export interface PathCtx { home?: string; cwd?: string }
 
 export const decorate = (text: string, kind: Severity | "ok" | "dim"): string => {
   switch (kind) {
@@ -174,3 +180,83 @@ export function exitCodeFor(results: { result: LintResult }[], policy: GatePolic
   }
   return 0;
 }
+
+// ---------------------------------------------------------------------------
+// Install reporting — the shared vocabulary for "here is what just landed on
+// disk". Path shortening, column alignment and the summary block live here so
+// add/update/remove all describe an install the same way.
+// ---------------------------------------------------------------------------
+
+/** ~/… for home-rooted paths, ./… for cwd-rooted paths, forward slashes. */
+export function shortPath(p: string, ctx: PathCtx = {}): string {
+  const home = resolve(ctx.home ?? homedir());
+  const cwd = resolve(ctx.cwd ?? process.cwd());
+  const abs = resolve(p);
+  const norm = (s: string) => s.split(sep).join("/");
+  // cwd wins over home: inside a project, "./…" is the more useful address even
+  // though the project also sits under $HOME.
+  if (abs === cwd || abs.startsWith(cwd + sep)) return `./${norm(relative(cwd, abs))}`.replace(/\/$/, "");
+  if (abs === home || abs.startsWith(home + sep)) return `~/${norm(relative(home, abs))}`;
+  return norm(abs);
+}
+
+const visible = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
+
+/**
+ * Left-aligned columns. Every column but the last is padded to its widest cell;
+ * the last is truncated so the line stays inside `width`. Widths are measured
+ * on the VISIBLE text, so coloured cells still line up.
+ */
+export function table(rows: string[][], opts: { width?: number; indent?: string } = {}): string {
+  if (rows.length === 0) return "";
+  const width = opts.width ?? Math.min(process.stdout.columns ?? 100, 120);
+  const indent = opts.indent ?? "";
+  const cols = Math.max(...rows.map((r) => r.length));
+  const widths = Array.from({ length: cols }, (_, i) => Math.max(...rows.map((r) => visible(r[i] ?? ""))));
+  return rows.map((r) => {
+    let line = indent;
+    for (let i = 0; i < cols; i++) {
+      const cell = r[i] ?? "";
+      if (i < cols - 1) { line += cell + " ".repeat(widths[i]! - visible(cell) + 2); continue; }
+      const room = Math.max(4, width - visible(line));
+      line += visible(cell) > room ? `${cell.slice(0, room - 1)}…` : cell;
+    }
+    return line.trimEnd();
+  }).join("\n");
+}
+
+export interface InstallSummaryInput {
+  name: string;
+  score: number;
+  flags: string[];
+  source: string;
+  canonical: string;
+  targets: InstallTarget[];
+  skipped: { agent: string; reason: string }[];
+  /** Source of the install this one replaced, or "untracked". */
+  replaced?: string;
+}
+
+/** The block printed for one installed skill: what landed, where, and how. */
+export function renderInstallSummary(i: InstallSummaryInput, ctx: PathCtx & { width?: number } = {}): string {
+  const head = pc.green(`✓ ${i.name}`) + pc.dim(`  score ${i.score}${i.flags.length ? `  ${i.flags.join(", ")}` : ""}  from ${i.source}`);
+  // Agents sharing one physical path (the .agents/skills convention) collapse
+  // into one row — "warp, cline  ~/.agents/skills/x  canonical".
+  const byPath = new Map<string, { agents: string[]; mode: string }>();
+  for (const t of i.targets) {
+    const e = byPath.get(t.path);
+    if (e) e.agents.push(t.agent);
+    else byPath.set(t.path, { agents: [t.agent], mode: t.mode });
+  }
+  const rows = [...byPath.entries()].map(([path, e]) => [pc.cyan(e.agents.join(", ")), shortPath(path, ctx), pc.dim(e.mode)]);
+  const body = rows.length
+    ? table(rows, { width: ctx.width, indent: "  " })
+    : pc.dim(`  ${shortPath(i.canonical, ctx)}  canonical only`);
+  const skipped = i.skipped.map((s) => pc.dim(`  ↷ ${s.agent}: ${s.reason}`));
+  const replaced = i.replaced
+    ? [pc.yellow(`  ⚠ replaced previous install (${i.replaced === "untracked" ? "untracked directory" : i.replaced})`)]
+    : [];
+  return [head, body, ...skipped, ...replaced].join("\n");
+}
+
+export const banner = (): string => pc.bgCyan(pc.black(" skillmd "));

@@ -2,7 +2,7 @@ import { Command, Option } from "commander";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
@@ -16,6 +16,8 @@ import { parseSource, sourceId } from "../sources.js";
 import { detectHostAgent, isInteractive, nonInteractiveHint } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
 import { safeText } from "../sanitize.js";
+import { banner, renderInstallSummary } from "../ui.js";
+import type { PathCtx } from "../ui.js";
 
 export interface AddFlags {
   global?: boolean;
@@ -103,10 +105,13 @@ export function looksLikeProject(dir: string): boolean {
 // human renderer is the only thing that ever colours or decorates it.
 // ---------------------------------------------------------------------------
 
-interface Notice { text: string; style: "info" | "warn" | "skip" }
+// "replaced" is a warning like any other in --json, but the human renderer
+// drops it: the install summary already prints that line under the skill.
+interface Notice { text: string; style: "info" | "warn" | "skip" | "replaced" }
 const infoNotice = (text: string): Notice => ({ text, style: "info" });
 const warnNotice = (text: string): Notice => ({ text, style: "warn" });
 const skipNotice = (text: string): Notice => ({ text, style: "skip" });
+const replacedNotice = (text: string): Notice => ({ text, style: "replaced" });
 
 function noticeLine(n: Notice): string {
   if (n.style === "info") return pc.dim(`ℹ ${n.text}`);
@@ -370,11 +375,11 @@ interface InstalledDoc {
 }
 
 type CandidateRecord =
-  | { kind: "installed"; doc: InstalledDoc; score: number; securityFlags: string[]; notices: Notice[] }
+  | { kind: "installed"; doc: InstalledDoc; score: number; securityFlags: string[]; notices: Notice[]; source: string; replaced?: string }
   | { kind: "blocked"; name: string; reason: string; message: string };
 
 type AddOutcome =
-  | { kind: "install"; scope: "global" | "project"; records: CandidateRecord[]; notices: Notice[]; rel: (abs: string) => string }
+  | { kind: "install"; scope: "global" | "project"; records: CandidateRecord[]; notices: Notice[]; paths: PathCtx }
   | { kind: "list"; skills: { name: string; description: string }[] }
   | { kind: "fail"; error: string; blocked?: AddResult["blocked"]; notices?: Notice[] }
   | { kind: "cancel" };
@@ -401,7 +406,7 @@ function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
       const doc = { ok: exitCode === 0, scope: outcome.scope, installed, blocked, warnings };
       return {
         written, blocked, exitCode,
-        output: json ? JSON.stringify(doc, null, 2) : renderHuman(outcome.notices, outcome.records, outcome.rel),
+        output: json ? JSON.stringify(doc, null, 2) : renderHuman(outcome.notices, outcome.records, outcome.paths),
       };
     }
     case "list": {
@@ -434,18 +439,24 @@ function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
 }
 
 /** The only place that turns a finished run into terminal text. */
-function renderHuman(notices: Notice[], records: CandidateRecord[], rel: (abs: string) => string): string {
+function renderHuman(notices: Notice[], records: CandidateRecord[], paths: PathCtx): string {
   const lines = notices.map(noticeLine);
   for (const r of records) {
     if (r.kind === "blocked") { lines.push(pc.red(r.message)); continue; }
     const { doc } = r;
-    lines.push(`${pc.green("✓")} ${pc.bold(doc.name)}  ${pc.dim(`score ${r.score}`)}${r.securityFlags.length ? `  ${pc.yellow(r.securityFlags.join(", "))}` : ""}`);
-    // Align the agent column to the widest agent actually written to, not to a
-    // constant wide enough for the longest agent id that exists.
-    const width = doc.targets.length ? Math.max(...doc.targets.map((t) => t.agent.length)) : 0;
-    for (const t of doc.targets) lines.push(`  ${t.agent.padEnd(width)} ${rel(t.path)} ${pc.dim(t.mode)}`);
-    for (const s of doc.skipped) lines.push(pc.dim(`  ↷ ${s.agent}: ${s.reason}`));
-    for (const n of r.notices) lines.push(noticeLine(n));
+    lines.push(renderInstallSummary({
+      name: doc.name,
+      score: r.score,
+      flags: r.securityFlags,
+      source: r.source,
+      canonical: doc.canonical,
+      targets: doc.targets,
+      skipped: doc.skipped,
+      ...(r.replaced ? { replaced: r.replaced } : {}),
+    }, paths));
+    // The summary already carries the skipped agents and the "replaced" line;
+    // everything else the install had to say still gets its own notice line.
+    for (const n of r.notices) if (n.style !== "replaced") lines.push(noticeLine(n));
   }
   return lines.join("\n");
 }
@@ -572,7 +583,7 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
   }
 
   const notices: Notice[] = [];
-  if (out.replaced) notices.push(warnNotice(`${c.name}: replaced previous install (${out.replaced})`));
+  if (out.replaced) notices.push(replacedNotice(`${c.name}: replaced previous install (${out.replaced})`));
   if (c.pinMiss) notices.push(warnNotice(`${c.name}: pinned commit unavailable upstream — fetched the source repo's default branch instead`));
   if (c.note) notices.push(warnNotice(`${c.name}: ${c.note}`));
   if (c.type === "pack" && !c.files) {
@@ -588,6 +599,8 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
     score: result.score,
     securityFlags,
     notices,
+    source,
+    ...(out.replaced ? { replaced: out.replaced } : {}),
   };
 }
 
@@ -625,12 +638,8 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   const records: CandidateRecord[] = [];
   for (const c of candidates) records.push(await installOne(c, ctx));
 
-  const scopeRoot = scope.global ? (flags.home ?? homedir()) : (flags.cwd ?? process.cwd());
-  const rel = (abs: string): string => {
-    const r = relative(scopeRoot, abs);
-    return r && !r.startsWith("..") ? r : abs;
-  };
-  return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records, notices, rel });
+  const paths: PathCtx = { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() };
+  return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records, notices, paths });
 }
 
 /** `--copy` is the deprecated spelling of `--mode copy`; fold the two together
@@ -664,11 +673,53 @@ export function addCommand(): Command {
     .option("--deny <flags...>", "refuse skills carrying any of these security flags (opt-in)")
     .action(async (source: string, opts: AddFlags & { copy?: boolean }, cmd: Command) => {
       const merged = addFlags(opts, cmd.parent?.opts() as AddFlags | undefined);
-      const run = await runAdd(source, merged);
+      const run = await runAddWithUI(source, merged);
       // A failure belongs on stderr: a human piping stdout somewhere still sees
       // why nothing was installed instead of losing it into the pipe.
       if (run.exitCode === 1 && !merged.json) console.error(run.output);
       else console.log(run.output);
       process.exitCode = run.exitCode;
     });
+}
+
+/**
+ * runAdd() is print-free on purpose — it returns a document. This is the one
+ * place that dresses it up: on a real terminal the run is framed by clack
+ * (intro, a spinner while the source is resolved, an outro that says what to do
+ * next). Piped, -y and --json runs get the plain document and nothing else.
+ */
+async function runAddWithUI(source: string, flags: AddFlags): Promise<AddResult> {
+  const term = { stdinTTY: Boolean(process.stdin.isTTY), stdoutTTY: Boolean(process.stdout.isTTY), env: flags.env ?? process.env };
+  if (!isInteractive(flags, term)) return runAdd(source, flags);
+  const base = makeDefaultDeps(flags);
+  p.intro(banner());
+  try {
+    const run = await runAdd(source, flags, {
+      ...base,
+      resolve: async (arg, f) => {
+        const s = p.spinner();
+        s.start(`Resolving ${arg}`);
+        try {
+          const c = await base.resolve(arg, f);
+          s.stop(`${c.length} skill${c.length === 1 ? "" : "s"} found`);
+          return c;
+        } catch (e) {
+          s.stop(pc.red("Could not resolve the source"));
+          throw e;
+        }
+      },
+    });
+    // A cancelled run already printed clack's own "cancelled" frame.
+    if (!run.cancelled) {
+      p.outro(run.exitCode === 0
+        ? `Done. Run ${pc.cyan("skillmd list")} to see everything installed.`
+        : pc.red("Some skills were not installed."));
+    }
+    return run;
+  } catch (e) {
+    // Close the clack frame before the top-level handler prints the message,
+    // so the error doesn't land inside a half-drawn box.
+    p.outro(pc.red("Nothing was installed."));
+    throw e;
+  }
 }
