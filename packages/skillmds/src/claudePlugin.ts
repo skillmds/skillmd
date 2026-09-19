@@ -46,6 +46,21 @@ function exec(deps: ClaudePluginDeps) {
     })));
 }
 
+/** The name a plugin carries in the marketplace manifest.
+ *
+ *  Mirrors pluginName() in the website's pluginBundle.ts, which is the source
+ *  of truth. Claude Code rejects a name that is not kebab-case, and a
+ *  marketplace is keyed by name, so two owners sharing a slug would collide —
+ *  community plugins are namespaced with their owner, curated ones (owner
+ *  `skillmd`) keep the bare slug. Getting this wrong does not error, it just
+ *  resolves to "not found in marketplace" and silently falls back, which is
+ *  exactly what happened to every community plugin before this existed. */
+export function marketplacePluginName(owner: string, slug: string): string {
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = clean(slug) || "plugin";
+  return owner.toLowerCase() === "skillmd" ? base : `${clean(owner)}-${base}`;
+}
+
 /** Is Claude Code's CLI usable here? */
 export async function claudeCliAvailable(deps: ClaudePluginDeps = {}): Promise<boolean> {
   try {
@@ -61,11 +76,12 @@ export async function claudeCliAvailable(deps: ClaudePluginDeps = {}): Promise<b
  *  `claude plugin install` exits 0 even when it fails ("Plugin X not found in
  *  marketplace"), so success is read from the output, never the exit code. */
 export async function installClaudePlugin(
+  owner: string,
   slug: string,
   deps: ClaudePluginDeps = {},
 ): Promise<PluginInstallOutcome> {
   const sh = exec(deps);
-  const qualified = `${slug}@${MARKETPLACE_NAME}`;
+  const qualified = `${marketplacePluginName(owner, slug)}@${MARKETPLACE_NAME}`;
   try {
     // Idempotent: a second add reports "already on disk" and still exits 0, so
     // this runs unconditionally rather than probing for the marketplace first.
