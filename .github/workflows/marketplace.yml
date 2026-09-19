@@ -1,0 +1,44 @@
+# Keep the repo's marketplace manifest in step with the registry.
+#
+# Claude Code's Plugins tab takes a GitHub owner/repo, not a URL, and reads
+# .claude-plugin/marketplace.json from the default branch. That file therefore
+# has to live here — but the registry gains plugins every day, so a hand-copied
+# manifest would be wrong within a week and every new plugin would fail with
+# "not found in marketplace".
+name: marketplace
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the published manifest
+        run: |
+          curl -fsSL --retry 3 https://skillmd.com/.claude-plugin/marketplace.json -o /tmp/marketplace.json
+          # A truncated or error body must never land on the default branch:
+          # every plugin in the tab would disappear until the next run.
+          node -e '
+            const m = require("/tmp/marketplace.json");
+            if (m.name !== "skillmd" || !Array.isArray(m.plugins) || m.plugins.length < 100) {
+              throw new Error(`refusing to commit a manifest with ${m.plugins?.length} plugins`);
+            }
+          '
+          mv /tmp/marketplace.json .claude-plugin/marketplace.json
+      - name: Commit when it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- .claude-plugin/marketplace.json; then
+            echo "no change"; exit 0
+          fi
+          COUNT=$(node -p "require('./.claude-plugin/marketplace.json').plugins.length")
+          git commit -qm "chore: refresh the marketplace manifest ($COUNT plugins)" -- .claude-plugin/marketplace.json
+          git push

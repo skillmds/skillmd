@@ -57,6 +57,21 @@ npx skillmds add anthropic/pdf
 npx skillmds lint ./my-skill
 ```
 
+## Plugins
+
+A plugin is a bundle of skills that installs as one unit. In Claude Code it becomes a
+real plugin — `/plugin` lists it, and enable, disable and uninstall work on the whole
+set — and on every other agent the skills are installed individually.
+
+```bash
+npx skillmds add plugin:skillmd/design
+```
+
+To browse them inside Claude Code's Plugins tab instead, add this repository as a
+marketplace: `skillmds/skillmd`. The manifest lives at
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) and is refreshed
+from the registry daily.
+
 No account needed for any of the above. Skills land in each detected agent's own directory (`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, …). Per-agent walkthroughs: [Claude Code](https://skillmd.com/agents/claude-code) · [Cursor](https://skillmd.com/agents/cursor) · [Codex](https://skillmd.com/agents/codex) · [Gemini CLI](https://skillmd.com/agents/gemini-cli) · [GitHub Copilot](https://skillmd.com/agents/github-copilot) · [Windsurf](https://skillmd.com/agents/windsurf) · [all agents](https://skillmd.com/agents).
 
 ## The CLI: `skillmd`
