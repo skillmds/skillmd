@@ -1,0 +1,9 @@
+{
+  "name": "design-system-foundation",
+  "description": "Create design tokens, principles, and naming conventions for a new design system.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/design-system-foundation"
+}

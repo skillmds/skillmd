@@ -1,0 +1,9 @@
+{
+  "name": "planning-product",
+  "description": "PRDs, roadmaps, OKRs, discovery and product strategy.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/planning-product"
+}

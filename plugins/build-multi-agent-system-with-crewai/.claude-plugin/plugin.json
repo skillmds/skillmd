@@ -1,0 +1,9 @@
+{
+  "name": "build-multi-agent-system-with-crewai",
+  "description": "Design and orchestrate multi-agent AI teams using the CrewAI framework with agent roles, task decomposition, and crew processes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/build-multi-agent-system-with-crewai"
+}

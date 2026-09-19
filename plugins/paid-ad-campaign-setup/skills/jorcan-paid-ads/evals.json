@@ -1,0 +1,10 @@
+{
+    "test_cases": [
+        {
+            "prompt": "Prueba esta habilidad",
+            "assertions": {
+                "is_not_empty": "len(text) > 5"
+            }
+        }
+    ]
+}

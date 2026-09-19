@@ -1,0 +1,9 @@
+{
+  "name": "skill-authoring-toolkit",
+  "description": "For developers creating and maintaining skills for AI coding agents.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/skill-authoring-toolkit"
+}

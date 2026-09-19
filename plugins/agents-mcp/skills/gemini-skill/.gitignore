@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+dist/
+output/
+.env.development
+.env.*.local
+gemini-skill.code-workspace
+gemini-image

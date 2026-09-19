@@ -1,0 +1,9 @@
+{
+  "name": "testing-quality",
+  "description": "Testing, TDD, code review, linting and debugging.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/testing-quality"
+}

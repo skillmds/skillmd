@@ -1,0 +1,9 @@
+{
+  "name": "docs-writing",
+  "description": "Generate and edit docs, PDFs, slides and technical writing.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/docs-writing"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "create-prd-from-idea",
+  "description": "Create a PRD by clarifying the idea, researching, and generating a comprehensive requirements document.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/create-prd-from-idea"
+}

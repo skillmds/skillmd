@@ -1,0 +1,9 @@
+{
+  "name": "paid-ad-campaign-setup",
+  "description": "Analyze competitor ads, design ad creative, and set up campaigns on Google/Meta/LinkedIn.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/paid-ad-campaign-setup"
+}

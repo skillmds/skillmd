@@ -1,0 +1,9 @@
+{
+  "name": "agents-mcp",
+  "description": "Build agents, MCP servers and tool-using workflows.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/agents-mcp"
+}

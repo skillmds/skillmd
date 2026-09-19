@@ -1,16 +1,24 @@
-# Keep the repo's marketplace manifest in step with the registry.
+# Keep this repo's marketplace in step with the registry.
 #
-# Claude Code's Plugins tab takes a GitHub owner/repo, not a URL, and reads
-# .claude-plugin/marketplace.json from the default branch. That file therefore
-# has to live here — but the registry gains plugins every day, so a hand-copied
-# manifest would be wrong within a week and every new plugin would fail with
-# "not found in marketplace".
+# Claude Code's Plugins tab — and claude.ai's marketplace sync — take a GitHub
+# owner/repo and only understand plugins that live in git. They do not
+# implement the `archive` source the registry's own manifest uses, so the
+# flagship plugins are checked in here as real directories and the manifest
+# points at those paths. Everything else in the registry installs with
+# `npx skillmds add plugin:<owner>/<slug>`.
+#
+# Weekly, not daily: the trees are tens of megabytes and every refresh that
+# changes them is another copy in this repo's history.
 name: marketplace
 
 on:
   schedule:
-    - cron: "17 5 * * *"
+    - cron: "17 5 * * 1"
   workflow_dispatch:
+    inputs:
+      count:
+        description: How many curated plugins to check in
+        default: "24"
 
 permissions:
   contents: write
@@ -23,14 +31,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/refresh-marketplace.mjs
+      - run: npm ci
+      - run: node scripts/build-plugin-trees.mjs "${{ inputs.count || 24 }}"
       - name: Commit when it changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- .claude-plugin/marketplace.json; then
+          git add -A .claude-plugin plugins
+          if git diff --cached --quiet; then
             echo "no change"; exit 0
           fi
           COUNT=$(node -p "require('./.claude-plugin/marketplace.json').plugins.length")
-          git commit -qm "chore: refresh the marketplace manifest ($COUNT plugins)" -- .claude-plugin/marketplace.json
+          git commit -qm "chore: refresh the marketplace ($COUNT plugins)"
           git push

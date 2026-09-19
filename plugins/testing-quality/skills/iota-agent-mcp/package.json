@@ -1,0 +1,50 @@
+{
+  "name": "iota-agent-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for IOTA blockchain — wallet, Move CLI, on-chain queries via Model Context Protocol",
+  "main": "dist/index.js",
+  "bin": {
+    "iota-agent-mcp": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --config jest.config.js",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "iota",
+    "mcp",
+    "model-context-protocol",
+    "blockchain",
+    "ai-agent",
+    "move",
+    "claude-code",
+    "cursor"
+  ],
+  "author": "Elyan Labs <scott@elyanlabs.ai>",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
+    "tsx": "^4.23.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/",
+    "SKILL.md",
+    "README.md"
+  ]
+}

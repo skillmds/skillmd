@@ -1,0 +1,18 @@
+# Environment & secrets
+.env
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Backups created by scripts
+observation-backups/
+*.bak*

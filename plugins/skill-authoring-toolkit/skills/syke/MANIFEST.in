@@ -1,0 +1,21 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include setup.py
+include install_syke.sh
+
+recursive-include syke *.py *.md *.html py.typed
+
+prune tests
+prune docs
+prune scripts
+prune research
+prune _internal
+prune .github
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude *.calls.py
+global-exclude *.deps.py
+global-exclude *.impact.py

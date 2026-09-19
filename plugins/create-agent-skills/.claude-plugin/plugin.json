@@ -1,0 +1,9 @@
+{
+  "name": "create-agent-skills",
+  "description": "Scaffold, build, verify, and share a new agent skill with the team.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/create-agent-skills"
+}

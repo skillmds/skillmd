@@ -68,11 +68,11 @@ npx skillmds add plugin:skillmd/design
 ```
 
 To browse them inside Claude Code's Plugins tab instead, add this repository as a
-marketplace: `skillmds/skillmd`. The manifest lives at
-[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) and is refreshed
-from the registry daily. It carries the curated plugins: the Plugins tab reads the file
-through an API that returns nothing for a file over 1MB, and the full roster is larger
-than that. Every other plugin installs with the command above.
+marketplace: `skillmds/skillmd`. It carries the flagship plugins as real directories
+under [`plugins/`](plugins), listed in
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) and refreshed
+weekly. The tab only understands plugins that live in git, which is why the whole
+registry is not in there — every other plugin installs with the command above.
 
 No account needed for any of the above. Skills land in each detected agent's own directory (`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, …). Per-agent walkthroughs: [Claude Code](https://skillmd.com/agents/claude-code) · [Cursor](https://skillmd.com/agents/cursor) · [Codex](https://skillmd.com/agents/codex) · [Gemini CLI](https://skillmd.com/agents/gemini-cli) · [GitHub Copilot](https://skillmd.com/agents/github-copilot) · [Windsurf](https://skillmd.com/agents/windsurf) · [all agents](https://skillmd.com/agents).
 

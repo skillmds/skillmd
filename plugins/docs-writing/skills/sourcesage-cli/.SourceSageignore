@@ -1,0 +1,119 @@
+# =============================================
+# .SourceSageignore
+# Default ignore patterns for SourceSage analysis
+# =============================================
+
+# ---------------------------------------------
+# Version control
+# ---------------------------------------------
+.git/
+.gitignore
+.SourceSageignore
+
+# ---------------------------------------------
+# Python
+# ---------------------------------------------
+__pycache__/
+**/__pycache__/**
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+*.cover
+tests/temp/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Package and build outputs
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ---------------------------------------------
+# Package manager lock files
+# ---------------------------------------------
+poetry.lock
+Pipfile.lock
+uv.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ---------------------------------------------
+# Node.js
+# ---------------------------------------------
+node_modules/
+.npm/
+.yarn/
+
+# ---------------------------------------------
+# IDE and editor files
+# ---------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---------------------------------------------
+# Terraform
+# ---------------------------------------------
+.terraform/
+*.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+
+# ---------------------------------------------
+# SourceSage artifacts
+# ---------------------------------------------
+.SourceSageAssets/
+.SourceSageAssetsDemo/
+repository_summary.md
+
+# ---------------------------------------------
+# Temporary outputs
+# ---------------------------------------------
+output/
+output.md
+test_output/
+*.log
+memo.md
+
+# ---------------------------------------------
+# Docs drafts and generated content
+# ---------------------------------------------
+docs/drafts/
+example/
+
+# ---------------------------------------------
+# Images and media
+# ---------------------------------------------
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.svg
+*.ico
+*.mp4
+*.mp3
+
+# ---------------------------------------------
+# Include overrides
+# ---------------------------------------------
+!docs/important.md
+!.github/workflows/
+tmp/

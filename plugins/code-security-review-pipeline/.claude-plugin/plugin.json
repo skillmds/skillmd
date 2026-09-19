@@ -1,0 +1,9 @@
+{
+  "name": "code-security-review-pipeline",
+  "description": "Audit code changes for bugs, security flaws, and quality issues before merging.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/code-security-review-pipeline"
+}

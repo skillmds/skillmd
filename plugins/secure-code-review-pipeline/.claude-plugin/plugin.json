@@ -1,0 +1,9 @@
+{
+  "name": "secure-code-review-pipeline",
+  "description": "Installs a pipeline to validate, plan, execute, and enforce a secure code review on PRs.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/secure-code-review-pipeline"
+}

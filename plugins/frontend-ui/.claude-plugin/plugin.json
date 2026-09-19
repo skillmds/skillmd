@@ -1,0 +1,9 @@
+{
+  "name": "frontend-ui",
+  "description": "React, Vue, Svelte, CSS and component skills for building interfaces.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/frontend-ui"
+}

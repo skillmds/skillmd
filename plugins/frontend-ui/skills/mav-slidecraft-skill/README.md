@@ -1,0 +1,447 @@
+# mav-slidecraft-skill
+
+<img width="2796" height="1500" alt="image" src="https://github.com/user-attachments/assets/28dde9a5-bca3-410d-9e6e-762dd103f533" />
+
+> **零依赖、动画丰富的 HTML 演示文稿生成器**
+> Zero-dependency, animation-rich HTML presentation generator
+
+[中文](#中文文档) | [English](#english-docs)
+
+---
+
+## 致谢 / Credits
+
+本项目的设计系统基于 Zara Zhang 的 [frontend-slides](https://github.com/zarazhangrui/frontend-slides) 进行了大量改进和扩展。
+
+The design system of this project is derived from Zara Zhang's [frontend-slides](https://github.com/zarazhangrui/frontend-slides), with significant enhancements including:
+
+- **11 种精心设计的风格组合** — 采用 A+B+C 组合公式（主风格 + 维度增强 + 质感滤镜）
+- **40 种微交互机制（Delight Library）** — 每种风格 3–5 个专属机制
+- **真实扫描纹理系统** — 内联 PNG data-uri，替代 SVG 噪点
+- **完善的 6 阶段工作流程** — 内容发现 → 风格选择 → 预览确认 → 生成 → 交付 → 分享
+- **内容自适应系统** — `fitSlideContent()` 防止内容溢出
+- **中文支持** — 完整的中文界面和文档
+
+---
+
+<a name="中文文档"></a>
+
+## 中文文档
+
+### 这是什么？
+
+**mav-slidecraft-skill** 是一个 Claude Code skill，帮助你创建零依赖、动画丰富的 HTML 演示文稿。你不需要懂 CSS 或 JavaScript，只需要告诉 Claude 你想要什么内容，它会帮你生成精美的网页演示。
+
+### 核心特色
+
+| 特性 | 说明 |
+|------|------|
+| **零依赖** | 单个 HTML 文件，所有 CSS/JS 内联，无需 npm、构建工具、框架 |
+| **视觉探索** | 不需要用语言描述设计偏好，直接从视觉预览中选择 |
+| **PPT 转换** | 将现有 PowerPoint 转换为网页，保留所有图片和内容 |
+| **反 AI 同质化** | 精选的独特风格，避免通用 AI 美学（告别紫色渐变） |
+| **微交互系统** | 40 种精心设计的微交互机制，让演示"活起来" |
+| **生产级质量** | 可访问、响应式、代码注释完善，可自由定制 |
+
+### 11 种风格组合
+
+| 序号 | 风格组合 | 核心气质 | 适用场景 |
+|------|----------|----------|----------|
+| 1 | 🧱 **数字粗野建筑** Neo-Brutalism + 3D | 粗犷几何+立体深度+混凝土纹理 | 创意机构、Web3、科技初创 |
+| 2 | 🚀 **80年代未来** Retro-Futurism | 霓虹渐变+复古科技感+CRT 点阵 | 科技发布会、游戏、音乐娱乐 |
+| 3 | 🎭 **极繁实验** Maximalism + Typography | 大胆混搭+编辑网格+拼贴纹理 | 创意机构、音乐艺术、时尚品牌 |
+| 4 | 🖍️ **天真实验** Naive + Typography | 手绘质感+Rough 风边框+贴纸拼贴 | 教育、儿童产品、手工品牌 |
+| 5 | 💎 **高端SaaS** Bento + 3D + Liquid Glass | 卡片布局+磨砂亚克力+三套行业色板 | SaaS产品、数据仪表板、产品展示 |
+| 6 | ☁️ **新极简温暖** Neo-Minimalism | 克制留白+真实颗粒+陶土粉点缀 | 高端品牌、奢侈品、科技公司 |
+| 7 | 🎉 **孟菲斯派对** Memphis | 真实孟菲斯色板+几何图案+层压板纹理 | 创业公司、潮流品牌、教育产品 |
+| 8 | 📐 **蓝图设计** Blueprint | 工程图纸+标注系统+等轴测投影 | 建筑/工程、技术分享、产品设计 |
+| 9 | 📰 **编辑杂志** Editorial Magazine | 大号衬线+强留白+出血大图+专栏网格 | 品牌故事、品牌发布会、设计作品集 |
+| 10 | 📚 **深色学院** Dark Academia | 深棕皮革+羊皮纸文字+烫金点缀 | 知识型演讲、历史文化、深度研究 |
+| 11 | 🍃 **侘寂科技** Wabi-Sabi Tech | 大量留白+和纸纹理+竖排装饰 | 人文关怀科技、可持续设计、东方美学 |
+
+
+
+<img width="2836" height="1536" alt="image" src="https://github.com/user-attachments/assets/0283a7a9-553f-4212-be11-c979f2ba33d6" />
+
+<img width="2800" height="1502" alt="image" src="https://github.com/user-attachments/assets/e9acbdf4-02a4-4af0-8c72-183b0248ee0a" />
+
+<img width="2806" height="1488" alt="image" src="https://github.com/user-attachments/assets/a45879da-8886-4b44-8856-5318acae11ba" />
+
+<img width="2804" height="1486" alt="image" src="https://github.com/user-attachments/assets/bc47fdcb-3a03-41a9-a992-c037f2495fc8" />
+
+<img width="2760" height="1470" alt="image" src="https://github.com/user-attachments/assets/90d0bfbf-16ef-4afb-9b47-a06e39ba2d1b" />
+
+<img width="2802" height="1502" alt="image" src="https://github.com/user-attachments/assets/60a82d86-86e4-42e9-aea5-3bc0ac831095" />
+
+<img width="2790" height="1456" alt="image" src="https://github.com/user-attachments/assets/c474fc95-e6a6-4183-81c8-db9cf9eb28c6" />
+
+<img width="2798" height="1510" alt="image" src="https://github.com/user-attachments/assets/7240f648-56d8-40ff-ae41-30b238c38ea3" />
+
+<img width="2780" height="1496" alt="image" src="https://github.com/user-attachments/assets/9890d879-2735-4134-b3f4-e25ec3effead" />
+
+<img width="2776" height="1446" alt="image" src="https://github.com/user-attachments/assets/5643a65d-b786-48a5-af9c-0964dd3a6fe0" />
+
+<img width="2758" height="1460" alt="image" src="https://github.com/user-attachments/assets/a5f7143d-6600-4d81-9b1f-68ab27ee895e" />
+
+
+
+
+
+
+
+
+
+**风格组合公式**: `A类(主风格) + B类(维度增强) + C类(质感滤镜)` — 每个组合包包含完整的设计系统、配色方案、字体搭配、动画预设和真实扫描纹理。
+
+### 微交互系统（Delight Library）
+
+每种风格组合配备 5 个专属微交互机制，生成演示时随机选择 3 个加入：
+
+| 风格组合 | 示例微交互 |
+|----------|-----------|
+| 新极简温暖 | 章节犹豫、留白凝视、字重欺骗、光标雕塑、错误对称 |
+| 孟菲斯派对 | 弹跳字符、几何追随、撞色闪烁、波浪字行、图案脉冲 |
+| 蓝图设计 | 线条绘制、测量延伸、发光脉冲、网格追踪、标注揭示 |
+| 数字粗野建筑 | 硬边弹跳、3D翻转、阴影位移、堆叠揭示、透视倾斜 |
+| 80年代未来 | 霓虹脉动、打字机、网格波动、颗粒漂移、色分离 |
+| 极繁实验 | 渐变流动、重叠字影、字符爆炸、描边填充、旋转标签 |
+| 天真实验 | 手绘入场、抖动悬停、贴纸弹跳、涂鸦光标、排版反抗 |
+| 高端SaaS | 模块抬升、玻璃光泽、网格重排、深度层叠、数据脉动 |
+| 编辑杂志 | 衬线揭示、留白呼吸、图片淡入、 hairline 延展、页码滚动 |
+| 深色学院 | 首字下沉、烫金闪烁、皮革颗粒、书页翻卷、墨迹晕染 |
+| 侘寂科技 | 竖排滑入、和纸纤维、陶土微动、墨渍扩散、间之呼吸 |
+
+### 使用方法
+
+#### 创建新演示
+
+```
+/mav-slidecraft-skill
+
+> "我想为我的 AI 创业公司做一个 Pitch Deck"
+```
+
+Skill 会：
+
+1. 询问内容（幻灯片数量、核心信息、图片）
+2. 展示 11 种风格组合供选择
+3. 生成 ASCII 预览确认内容
+4. 创建完整的演示文稿
+5. 在浏览器中打开
+
+#### 转换 PowerPoint
+
+```
+/mav-slidecraft-skill
+
+> "把我的 presentation.pptx 转换成网页"
+```
+
+Skill 会：
+
+1. 提取 PPT 中的所有文本、图片和备注
+2. 展示提取的内容供确认
+3. 让你选择视觉风格
+4. 生成包含所有原始素材的 HTML 演示
+
+### 分享演示
+
+#### 部署到 URL
+
+```bash
+bash scripts/deploy.sh ./my-deck/
+```
+
+使用 [Vercel](https://vercel.com)（免费）部署到永久可分享的 URL。
+
+#### 导出为 PDF
+
+```bash
+bash scripts/export-pdf.sh ./presentation.html ./output.pdf
+```
+
+使用 [Playwright](https://playwright.dev) 截图并合成 PDF（动画不会被保留）。
+
+### 架构
+
+采用**渐进式披露**设计 — 主 `SKILL.md` 是简洁的地图（~250 行），支持文件按需加载：
+
+| 文件 | 用途 | 加载时机 |
+|------|------|----------|
+| `SKILL.md` | 核心工作流程和规则 | 始终加载 |
+| `references/viewport-base.css` | 必须包含的响应式 CSS | Phase 3（生成时） |
+| `html-template.md` | HTML 结构和 JS 功能 | Phase 3 |
+| `animation-patterns.md` | CSS/JS 动画参考 | Phase 3 |
+| `references/combo-*.md` | 11 个视觉风格组合 | Phase 2（风格选择） |
+| `references/textures.css` | 真实扫描纹理 base64 | Phase 2 & 3 |
+| `references/delight-library/` | 40 个微交互模式 | Phase 2 & 3 |
+| `scripts/extract-pptx.py` | PPT 内容提取 | Phase 4（转换） |
+| `scripts/deploy.sh` | Vercel 部署 | Phase 6（分享） |
+| `scripts/export-pdf.sh` | 导出 PDF | Phase 6（分享） |
+
+### 安装
+
+#### 前置要求
+
+- [Claude Code CLI](https://claude.ai/claude-code)
+- （可选）Python 3.8+ 用于 PPT 转换
+- （可选）Node.js 18+ 用于 Vercel 部署和 PDF 导出
+
+#### macOS / Linux
+
+```bash
+# 克隆仓库
+git clone https://github.com/maverickgao8848/slide-craft-skill.git
+cd slide-craft-skill
+
+# 安装到 Claude Code
+mkdir -p ~/.claude/skills/mav-slidecraft-skill
+cp -r ./* ~/.claude/skills/mav-slidecraft-skill/
+```
+
+#### Windows (PowerShell)
+
+```powershell
+# 克隆仓库
+git clone https://github.com/maverickgao8848/slide-craft-skill.git
+cd slide-craft-skill
+
+# 安装到 Claude Code
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\skills\mav-slidecraft-skill"
+Copy-Item -Recurse -Force .\* "$env:USERPROFILE\.claude\skills\mav-slidecraft-skill\"
+```
+
+#### 验证安装
+
+在 Claude Code 中输入 `/mav-slidecraft-skill`，应该看到 skill 激活。
+
+#### 可选依赖
+
+**PPT 转换：**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Vercel 部署：**
+
+```bash
+npm install -g vercel
+vercel login
+```
+
+### 系统要求
+
+| 功能 | 要求 |
+|------|------|
+| 核心功能 | Claude Code CLI |
+| PPT 转换 | Python 3.8+ + `python-pptx` |
+| URL 部署 | Node.js 18+ + Vercel 账号（免费）|
+| PDF 导出 | Node.js 18+（Playwright 自动安装）|
+| 运行脚本 | macOS/Linux 终端 或 Windows Git Bash/WSL |
+
+---
+
+<a name="english-docs"></a>
+
+## English Docs
+
+### What is this?
+
+**mav-slidecraft-skill** is a Claude Code skill that helps you create zero-dependency, animation-rich HTML presentations. No CSS or JavaScript knowledge required — just tell Claude what content you want, and it generates beautiful web slides for you.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Zero Dependencies** | Single HTML files with inline CSS/JS. No npm, no build tools, no frameworks. |
+| **Visual Exploration** | Don't need to describe design preferences in words — pick from visual previews. |
+| **PPT Conversion** | Convert existing PowerPoint files to web, preserving all images and content. |
+| **Anti-AI-Slop** | Curated distinctive styles that avoid generic AI aesthetics (bye-bye, purple gradients). |
+| **Delight Library** | 40 carefully designed micro-interaction mechanisms to make presentations "alive". |
+| **Production Quality** | Accessible, responsive, well-commented code you can customize freely. |
+
+### 11 Style Combos
+
+| # | Style Combo | Core Vibe | Best For |
+|---|-------------|-----------|----------|
+| 1 | 🧱 **Neo-Brutalism + 3D** | Bold geometry + depth + concrete texture | Creative agencies, Web3, tech startups |
+| 2 | 🚀 **Retro-Futurism** | Neon gradients + retro-tech + CRT dot grid | Tech launches, gaming, music/entertainment |
+| 3 | 🎭 **Maximalism + Typography** | Bold mix + editorial grid + collage texture | Creative agencies, music/art, fashion brands |
+| 4 | 🖍️ **Naive + Typography** | Hand-drawn feel + Rough borders + stickers | Education, kids' products, artisan brands |
+| 5 | 💎 **Bento + 3D + Liquid Glass** | Card layout + frosted acrylic + 3 industry palettes | SaaS products, dashboards, product showcases |
+| 6 | ☁️ **Neo-Minimalism** | Restrained whitespace + real grain + terracotta accent | Premium brands, luxury, tech companies |
+| 7 | 🎉 **Memphis** | Authentic Memphis palette + geometry + laminate texture | Startups, trendy brands, educational products |
+| 8 | 📐 **Blueprint** | Engineering drawing + annotations + isometric projection | Architecture/engineering, tech talks, product design |
+| 9 | 📰 **Editorial Magazine** | Large serif + strong whitespace + bleeding images + column grid | Brand stories, launches, design portfolios |
+| 10 | 📚 **Dark Academia** | Dark leather + parchment text + gold foil | Knowledge talks, history/culture, deep research |
+| 11 | 🍃 **Wabi-Sabi Tech** | Generous whitespace + washi texture + vertical accents | Human-centered tech, sustainable design, Eastern aesthetics |
+
+**Combo Formula**: `Style A + Dimension B + Texture C` — each combo includes a complete design system, color palette, typography pairing, animation presets, and real scanned textures.
+
+### Delight Library (Micro-Interactions)
+
+Each style combo comes with 5 unique micro-interaction mechanisms. When generating a presentation, 3 are randomly selected:
+
+| Style Combo | Example Mechanisms |
+|-------------|-------------------|
+| Neo-Minimalism | Hesitating Numbers, Gazing Whitespace, Weight Deception, Cursor Sculpture, False Symmetry |
+| Memphis | Bouncing Characters, Geometry Follower, Color Flash, Wavy Line, Pattern Pulse |
+| Blueprint | Line Draw Animation, Dimension Line Extend, Glow Pulse, Grid Tracking, Annotation Reveal |
+| Neo-Brutalism 3D | Hard Edge Bounce, 3D Flip Card, Shadow Shift, Stack Reveal, Perspective Tilt |
+| Retro-Futurism | Neon Pulse, Typewriter Effect, Grid Wave, Grain Drift, Chromatic Aberration |
+| Maximalism Typography | Gradient Flow Text, Overlapping Shadow, Character Explosion, Stroke Fill, Spinning Tags |
+| Naive Typography | Hand-drawn Enter, Wobble Hover, Sticker Bounce, Doodle Cursor, Layout Rebellion |
+| Bento 3D Glass | Module Lift, Glass Shine, Grid Shuffle, Depth Stack, Data Pulse |
+| Editorial Magazine | Serif Reveal, Whitespace Breathe, Image Fade, Hairline Extend, Page Number Scroll |
+| Dark Academia | Drop Cap Sink, Gold Foil Shimmer, Leather Grain, Page Curl, Ink Bleed |
+| Wabi-Sabi Tech | Vertical Slide, Washi Fiber, Clay Micro-motion, Ink Spread, Ma Breathing |
+
+### Usage
+
+#### Create a New Presentation
+
+```
+/mav-slidecraft-skill
+
+> "I want to create a pitch deck for my AI startup"
+```
+
+The skill will:
+
+1. Ask about your content (slides, messages, images)
+2. Show 11 style combos to choose from
+3. Generate ASCII preview for content confirmation
+4. Create the full presentation
+5. Open it in your browser
+
+#### Convert a PowerPoint
+
+```
+/mav-slidecraft-skill
+
+> "Convert my presentation.pptx to a web slideshow"
+```
+
+The skill will:
+
+1. Extract all text, images, and notes from your PPT
+2. Show extracted content for confirmation
+3. Let you pick a visual style
+4. Generate an HTML presentation with all original assets
+
+### Sharing Your Presentations
+
+#### Deploy to a Live URL
+
+```bash
+bash scripts/deploy.sh ./my-deck/
+```
+
+Uses [Vercel](https://vercel.com) (free tier) to deploy to a permanent, shareable URL.
+
+#### Export to PDF
+
+```bash
+bash scripts/export-pdf.sh ./presentation.html ./output.pdf
+```
+
+Uses [Playwright](https://playwright.dev) to screenshot and combine into a PDF. Animations are not preserved (static snapshot).
+
+### Architecture
+
+Uses **progressive disclosure** — the main `SKILL.md` is a concise map (~250 lines), with supporting files loaded on-demand:
+
+| File | Purpose | Loaded When |
+|------|---------|-------------|
+| `SKILL.md` | Core workflow and rules | Always |
+| `references/viewport-base.css` | Mandatory responsive CSS | Phase 3 (generation) |
+| `html-template.md` | HTML structure and JS features | Phase 3 |
+| `animation-patterns.md` | CSS/JS animation reference | Phase 3 |
+| `references/combo-*.md` | 11 visual style combinations | Phase 2 (style selection) |
+| `references/textures.css` | Real scanned texture base64 | Phase 2 & 3 |
+| `references/delight-library/` | 40 micro-interaction patterns | Phase 2 & 3 |
+| `scripts/extract-pptx.py` | PPT content extraction | Phase 4 (conversion) |
+| `scripts/deploy.sh` | Deploy to Vercel | Phase 6 (sharing) |
+| `scripts/export-pdf.sh` | Export slides to PDF | Phase 6 (sharing) |
+
+### Installation
+
+#### Prerequisites
+
+- [Claude Code CLI](https://claude.ai/claude-code)
+- (Optional) Python 3.8+ for PPT conversion
+- (Optional) Node.js 18+ for Vercel deployment and PDF export
+
+#### macOS / Linux
+
+```bash
+# Clone the repository
+git clone https://github.com/maverickgao8848/slide-craft-skill.git
+cd slide-craft-skill
+
+# Install to Claude Code
+mkdir -p ~/.claude/skills/mav-slidecraft-skill
+cp -r ./* ~/.claude/skills/mav-slidecraft-skill/
+```
+
+#### Windows (PowerShell)
+
+```powershell
+# Clone the repository
+git clone https://github.com/maverickgao8848/slide-craft-skill.git
+cd slide-craft-skill
+
+# Install to Claude Code
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\skills\mav-slidecraft-skill"
+Copy-Item -Recurse -Force .\* "$env:USERPROFILE\.claude\skills\mav-slidecraft-skill\"
+```
+
+#### Verify Installation
+
+In Claude Code, type `/mav-slidecraft-skill` — you should see the skill activate.
+
+#### Optional Dependencies
+
+**For PPT conversion:**
+
+```bash
+pip install -r requirements.txt
+```
+
+**For Vercel deployment:**
+
+```bash
+npm install -g vercel
+vercel login
+```
+
+### Requirements
+
+| Feature | Requirement |
+|---------|-------------|
+| Core functionality | Claude Code CLI |
+| PPT conversion | Python 3.8+ + `python-pptx` |
+| URL deployment | Node.js 18+ + Vercel account (free) |
+| PDF export | Node.js 18+ (Playwright installs automatically) |
+| Running scripts | macOS/Linux terminal or Windows Git Bash/WSL |
+
+---
+
+## Philosophy / 设计哲学
+
+This skill was born from the belief that:
+
+1. **You don't need to be a designer to make beautiful things.** You just need to react to what you see.
+
+2. **Dependencies are debt.** A single HTML file will work in 10 years. A React project from 2019? Good luck.
+
+3. **Generic is forgettable.** Every presentation should feel custom-crafted, not template-generated.
+
+4. **Delight matters.** Micro-interactions transform a static presentation into an experience.
+
+---
+
+## License / 许可证
+
+MIT — Use it, modify it, share it.

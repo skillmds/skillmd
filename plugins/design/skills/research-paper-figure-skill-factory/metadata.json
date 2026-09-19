@@ -1,0 +1,437 @@
+{
+  "name": "research-paper-figure-skill-factory",
+  "display_name": "Research Paper Figure Skill Factory",
+  "version": "2.0.5",
+  "license": "MIT-0",
+  "entrypoint": "SKILL.md",
+  "description": "A research-paper figure Skill Factory for generating reusable specialized paper-figure-making skills from lawful corpus evidence. Version 2.0.5 requires generated skills to show visual structure with embedded saved reference or non-target concept/modeling example images inside text turns instead of prose-only structure descriptions, keeps target-paper candidate/final image isolation, and preserves the mandatory P6b/P6c paper-local best-practice second round after the diverse first-round candidate selection.",
+  "openclaw": {
+    "skillKey": "research-paper-figure-skill-factory"
+  },
+  "tags": [
+    "research-figure",
+    "paper-figure",
+    "figure-skill-builder",
+    "figure-skill-factory",
+    "figure-taxonomy",
+    "scientific-illustration",
+    "image-prompt",
+    "imagegen",
+    "chatgpt-images-2",
+    "clawhub",
+    "openclaw",
+    "visual-style",
+    "visual-communication",
+    "subtype-atlas",
+    "style-atlas",
+    "meta-skill",
+    "figure-studio",
+    "candidate-image-bridge",
+    "startup-no-target-paper-image",
+    "target-paper-image-isolation",
+    "required-concept-example-display",
+    "visual-structure-as-image",
+    "best-practice-second-round",
+    "full-feasible-corpus"
+  ],
+  "compatibility": [
+    "ChatGPT web",
+    "Codex",
+    "OpenClaw",
+    "ClawHub marketplace",
+    "skills.sh"
+  ],
+  "features": [
+    "specialized-skill-first-builder",
+    "full-feasible-local-pdf-coverage",
+    "evidence-backed-taxonomy",
+    "mandatory-subtype-style-illustration-atlas",
+    "saved-reference-image-display-in-text-turns",
+    "visual-structure-as-image-display",
+    "required-abstract-decision-concept-example-display",
+    "target-paper-candidate-final-image-isolation",
+    "mandatory-candidate-image-bridge",
+    "diverse-first-round-candidate-board",
+    "paper-local-best-practice-second-round-selection",
+    "chatgpt-web-create-image-chatgpt-images-2",
+    "codex-imagegen-first",
+    "sample-image-transfer",
+    "off-recommended-prompt-state-mapping"
+  ],
+  "builder_corpus_coverage_policy": {
+    "default_scope": "all_accessible_relevant_pdfs",
+    "fixed_small_sample_allowed": false,
+    "pilot_sample_allowed_only_with_user_or_resource_reason": true,
+    "sampling_must_not_claim_full_taxonomy": true,
+    "chunked_processing_allowed": true,
+    "representative_pages_are_audit_aids_only": true,
+    "multi_label_classification_required_when_applicable": true,
+    "production_grade_requires_full_feasible_coverage_or_recorded_exception": true
+  },
+  "generated_skill_atlas_policy": {
+    "subtype_atlas_required": true,
+    "style_atlas_required": true,
+    "production_lock_requires_atlas": true,
+    "package_local_asset_root": "assets/subtype-atlas",
+    "manifest_path": "assets/subtype-atlas/manifest.json",
+    "board_directory": "assets/subtype-atlas/boards",
+    "thumbnail_directory": "assets/subtype-atlas/thumbnails",
+    "reference_doc_path": "references/subtype-illustration-atlas.md",
+    "prefer_labeled_composite_boards": true,
+    "hierarchical_boards_allowed": true,
+    "all_boards_must_label_type_names": true,
+    "first_startup_reply_displays_saved_atlas": true,
+    "first_startup_reply_allows_saved_images": true,
+    "first_startup_reply_forbids_target_paper_generation": true,
+    "markdown_image_embed_required_for_display": true,
+    "plain_path_list_is_not_display": true,
+    "builder_reply_after_atlas_generation_displays_boards": true,
+    "codex_resolves_package_relative_paths_to_absolute_paths": true,
+    "chatgpt_sources_attempts_package_asset_display": true,
+    "minimum_classification_angles": [
+      "reader_question",
+      "narrative_role",
+      "logical_gap",
+      "visual_rhetoric",
+      "visual_grammar_layout",
+      "paper_slot",
+      "density_detail_level",
+      "visual_communication_art_style"
+    ],
+    "manifest_required_fields": [
+      "asset_id",
+      "classification_angle",
+      "subtype",
+      "image_path",
+      "thumbnail_path",
+      "board_path",
+      "generation_route",
+      "build_time_or_id",
+      "intended_use",
+      "transferable_visual_attributes",
+      "limitations"
+    ],
+    "atlas_generation_route": "ChatGPT web Create image through ChatGPT Images 2.0; Codex $imagegen skill first; if unavailable, ChatGPT Images 2.0 API or another approved image-generation API."
+  },
+  "inline_reference_display_policy": {
+    "text_replies_may_embed_saved_package_images": true,
+    "text_replies_must_embed_concept_examples_for_abstract_decisions": true,
+    "text_replies_must_not_embed_target_paper_candidate_or_final_images": true,
+    "target_paper_image_generation_turn_mode": "IMAGE_ONLY",
+    "markdown_image_embed_required": true,
+    "plain_path_list_is_not_sufficient": true,
+    "codex_path_rule": "Resolve package-local paths against the active skill root and emit absolute filesystem Markdown image paths, preferably with forward slashes.",
+    "chatgpt_web_path_rule": "Display saved source assets directly when possible, or use package-relative Markdown image embeds; if the host blocks rendering, record attempted_host_blocked and list exact asset paths.",
+    "display_render_status_field": "reference_display_render_status",
+    "abstract_decision_trigger_topics": [
+      "subtype",
+      "layout_grammar",
+      "visual_structure",
+      "layout_skeleton",
+      "panel_choreography",
+      "module_topology",
+      "arrow_grammar",
+      "visual_style",
+      "density",
+      "metaphor",
+      "modeling_pattern",
+      "candidate_scheme_differences",
+      "candidate_board_structure",
+      "second_round_optimization_geometry",
+      "final_content_architecture"
+    ],
+    "abstract_decision_trigger_steps": [
+      "P2",
+      "P3",
+      "P4",
+      "P6b",
+      "P7"
+    ],
+    "abstract_decision_conditional_steps": [
+      "P1",
+      "P6",
+      "P9"
+    ],
+    "no_new_concept_example_required_for": [
+      "pure_state_synchronization",
+      "caption_or_body_text_only",
+      "simple_confirmation",
+      "ordinary_restating_registered_image_batch"
+    ],
+    "allowed_inline_non_target_reference_roles": [
+      "saved_atlas",
+      "non_target_reference",
+      "concept_example"
+    ],
+    "inline_non_target_reference_must_not_set_candidate_image_batch_id": true,
+    "inline_non_target_reference_must_not_set_second_round_candidate_batch_id": true,
+    "inline_non_target_reference_does_not_satisfy_candidate_bridge": true,
+    "missing_relevant_image_behavior": "Record concept_example_required=true, concept_example_status=generation_pending or missing_recorded, concept_example_role, concept_example_trigger_reason, and the next generation/repair action."
+  },
+  "visual_structure_as_image_policy": {
+    "required": true,
+    "applies_to_generated_skills": true,
+    "text_must_not_substitute_prose_or_bullets_for_structure": true,
+    "trigger_topics": [
+      "visual_structure",
+      "layout_skeleton",
+      "panel_choreography",
+      "module_topology",
+      "arrow_grammar",
+      "content_architecture",
+      "candidate_board_structure",
+      "second_round_optimization_geometry",
+      "final_image_brief_structure"
+    ],
+    "trigger_steps": [
+      "P2",
+      "P3",
+      "P4",
+      "P6b",
+      "P7"
+    ],
+    "conditional_steps": [
+      "P1",
+      "P6",
+      "P9"
+    ],
+    "required_display": "Embed a saved atlas/reference image or non-target concept/modeling visual-structure example with Markdown image syntax in the same TEXT_ONLY reply when technically possible.",
+    "paper_specific_structure_preview_must_use_image_only": true,
+    "text_allowed_for": [
+      "naming_the_structure_role",
+      "listing_fixed_elements",
+      "listing_varied_axes",
+      "recording_batch_ids",
+      "writing_the_final_prompt_text"
+    ],
+    "text_not_allowed_as_only_structure_representation": [
+      "paragraph_only_layout_description",
+      "bullet_only_panel_choreography",
+      "ascii_diagram",
+      "mermaid",
+      "svg",
+      "code_rendered_sketch"
+    ],
+    "required_state_fields": [
+      "visual_structure_image_required",
+      "visual_structure_image_status",
+      "visual_structure_image_role",
+      "visual_structure_image_trigger_reason"
+    ],
+    "missing_behavior": "Generate or schedule a non-target visual-structure concept image and record visual_structure_image_status. Production lock fails until a saved/reference/concept structure image is embedded or a host-rendering block is explicitly recorded with repair action."
+  },
+  "off_recommended_prompt_state_policy": {
+    "required": true,
+    "applies_to_every_text_reply": true,
+    "generated_skills_must_not_depend_on_recommended_prompt_wording": true,
+    "must_execute_valid_user_request_then_map_to_workflow_step": true,
+    "must_record_before_and_after_steps": true,
+    "must_record_state_transition_reason": true,
+    "must_record_missing_prerequisites_or_explicit_skips": true,
+    "target_paper_image_request_in_text_turn_maps_to_text_setup_then_next_image_only": true,
+    "required_state_fields": [
+      "user_request_interpreted_action",
+      "workflow_step_before_user_request",
+      "workflow_step_after_user_request",
+      "state_transition_reason",
+      "off_recommended_prompt_handling",
+      "prerequisites_inferred_or_missing"
+    ],
+    "examples": [
+      "User says continue after text candidates: map to P4 setup or P5 image-only depending on whether P4 is already complete.",
+      "User says directly draw before candidate-board setup: map to P4 in the text reply and make P5 the next IMAGE_ONLY action.",
+      "User asks for caption before visual lock: map to P9 with P6b/P6c prerequisites pending."
+    ]
+  },
+  "visual_communication_style_taxonomy": [
+    "clean_editorial_flat",
+    "formal_architecture_schematic",
+    "minimal_line_art_schematic",
+    "blueprint_technical_drawing",
+    "mechanism_snapshot",
+    "premium_scientific_illustration",
+    "isometric_soft_3d",
+    "low_poly_abstract_3d",
+    "dashboard_interface_metaphor",
+    "mini_evidence_infographic",
+    "storyboard_panels",
+    "tile_card_mosaic_board",
+    "paper_cut_layered_collage",
+    "cartoon_comic_lite",
+    "photorealistic_cinematic_when_necessary"
+  ],
+  "generated_skill_candidate_policy": {
+    "text_candidates_default": 6,
+    "text_candidates_min": 4,
+    "text_candidates_max": 6,
+    "image_candidates_default": 6,
+    "image_candidates_min": 4,
+    "image_candidates_max": 6,
+    "second_round_image_candidates_default": 6,
+    "second_round_image_candidates_min": 4,
+    "second_round_image_candidates_max": 6,
+    "if_user_says_generate_without_count": "default_to_6_images",
+    "single_image_only_when_explicit": true,
+    "always_prompt_for_multi_candidate_images": true,
+    "target_paper_candidate_images_must_be_image_only": true,
+    "first_round_purpose": "maximize direction-level diversity and establish the visual direction",
+    "first_round_varied_axes": [
+      "subtype",
+      "layout_grammar",
+      "metaphor",
+      "density",
+      "panel_rhythm",
+      "style_family"
+    ],
+    "second_round_purpose": "optimize the selected first-round direction around paper-local details and best practices",
+    "second_round_local_axes": [
+      "module_relationships",
+      "evidence_or_case_anchor",
+      "label_economy",
+      "panel_transition",
+      "color_semantics",
+      "callout_placement",
+      "reviewer_readability"
+    ],
+    "candidate_image_bridge_required_after_multi_option_text": true,
+    "best_practice_second_round_required_after_p6_first_selection": true,
+    "required_bridge_steps": [
+      "TEXT_ONLY_candidate_board_setup",
+      "IMAGE_ONLY_candidate_board_generation",
+      "TEXT_ONLY_candidate_review_and_first_round_selection",
+      "TEXT_ONLY_best_practice_divergence_setup",
+      "IMAGE_ONLY_second_round_variant_generation",
+      "TEXT_ONLY_second_round_review_and_final_direction_lock"
+    ],
+    "multi_option_next_prompt_default": "ask_to_generate_or_display_6_target_paper_candidate_images_or_schematic_boards",
+    "key_visual_decision_default": "recommend_6_diverse_first_round_candidate_images_before_first_direction_selection_then_6_paper_local_second_round_variants",
+    "rendering_route_for_candidate_images": "ChatGPT web Create image through ChatGPT Images 2.0; Codex $imagegen skill first; if unavailable, ChatGPT Images 2.0 API or another approved image-generation API.",
+    "svg_or_code_visual_candidates_allowed": false,
+    "native_image_generation_required": true,
+    "native_generated_bitmap_exports_allowed": true,
+    "allowed_native_bitmap_output_formats": [
+      "png",
+      "jpg",
+      "jpeg",
+      "webp"
+    ],
+    "code_rendered_visual_substitutes_allowed": false,
+    "forbidden_generated_visual_outputs": [
+      "svg",
+      "mermaid",
+      "tikz",
+      "graphviz",
+      "html_css_diagram",
+      "canvas_diagram",
+      "matplotlib_figure",
+      "code_generated_figure"
+    ]
+  },
+  "generated_skill_required_production_steps": [
+    {
+      "step": "P1",
+      "mode": "TEXT_ONLY",
+      "purpose": "startup_or_material_intake_with_saved_atlas_display"
+    },
+    {
+      "step": "P2",
+      "mode": "TEXT_ONLY",
+      "purpose": "figure_need_diagnosis_and_routing_with_required_relevant_concept_or_atlas_images"
+    },
+    {
+      "step": "P3",
+      "mode": "TEXT_ONLY",
+      "purpose": "reader_effect_and_text_candidates_with_required_saved_style_or_layout_concept_display_when_relevant"
+    },
+    {
+      "step": "P4",
+      "mode": "TEXT_ONLY",
+      "purpose": "diverse_first_round_visual_candidate_board_setup_with_visual_structure_image_embed"
+    },
+    {
+      "step": "P5",
+      "mode": "IMAGE_ONLY",
+      "purpose": "diverse_first_round_target_paper_candidate_board_generation"
+    },
+    {
+      "step": "P6",
+      "mode": "TEXT_ONLY",
+      "purpose": "first_round_candidate_review_and_current_best_selection"
+    },
+    {
+      "step": "P6b",
+      "mode": "TEXT_ONLY",
+      "purpose": "best_practice_paper_local_divergence_setup_with_visual_structure_image_embed"
+    },
+    {
+      "step": "P6b-IMAGE",
+      "mode": "IMAGE_ONLY",
+      "purpose": "second_round_target_paper_variant_generation"
+    },
+    {
+      "step": "P6c",
+      "mode": "TEXT_ONLY",
+      "purpose": "second_round_review_and_final_direction_lock"
+    },
+    {
+      "step": "P7",
+      "mode": "TEXT_ONLY",
+      "purpose": "final_image_brief_after_second_round_lock_with_non_target_structure_reference_when_needed"
+    },
+    {
+      "step": "P8",
+      "mode": "IMAGE_ONLY",
+      "purpose": "target_paper_formal_generation"
+    },
+    {
+      "step": "P9",
+      "mode": "TEXT_ONLY",
+      "purpose": "review_caption_body_text"
+    }
+  ],
+  "generated_skill_requirements": {
+    "first_reply_plan_only_no_result": true,
+    "first_reply_displays_saved_atlas_when_available": true,
+    "no_target_paper_image_generation_on_first_reply": true,
+    "no_target_paper_image_generation_in_text_reply": true,
+    "abstract_decision_concept_example_display_required": true,
+    "visual_structure_as_image_display_required": true,
+    "inline_non_target_concept_examples_do_not_satisfy_candidate_bridge": true,
+    "saved_images_allowed_in_text_turn": true,
+    "image_turn_has_no_prose": true,
+    "all_steps_current_position_footer": true,
+    "session_history_state_source_default": "active_session_history",
+    "off_recommended_prompt_state_mapping_required": true,
+    "recommended_prompt_prefix": "Use the exact Chinese recommended prompt prefix from SKILL.md.",
+    "unknown_next_prompt": "Use the exact Chinese fallback prompt from SKILL.md.",
+    "after_multi_option_text_first_prompt": "Ask to generate/display 6 diverse first-round target-paper candidate images or schematic candidates for comparison.",
+    "after_p6_first_selection_first_prompt": "Ask to set up P6b best-practice paper-local optimization axes before final prompt construction.",
+    "candidate_bridge_lock_test_required": true,
+    "best_practice_second_round_lock_test_required": true,
+    "subtype_style_atlas_lock_test_required": true,
+    "atlas_markdown_embed_lock_test_required": true,
+    "off_recommended_prompt_state_lock_test_required": true,
+    "target_paper_image_isolation_lock_test_required": true,
+    "required_concept_example_lock_test_required": true,
+    "visual_structure_as_image_lock_test_required": true
+  },
+  "required_state_fields": [
+    "concept_example_required",
+    "concept_example_status",
+    "concept_example_role",
+    "concept_example_trigger_reason",
+    "visual_structure_image_required",
+    "visual_structure_image_status",
+    "visual_structure_image_role",
+    "visual_structure_image_trigger_reason",
+    "best_practice_divergence_status",
+    "best_practice_divergence_axes",
+    "second_round_candidate_batch_id",
+    "selected_second_round_candidate"
+  ],
+  "rendering_route": {
+    "chatgpt_web": "Use Create image through ChatGPT Images 2.0",
+    "codex_priority": "$imagegen skill first",
+    "codex_fallback": "ChatGPT Images 2.0 API or another approved image-generation API"
+  }
+}

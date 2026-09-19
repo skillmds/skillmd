@@ -1,0 +1,9 @@
+{
+  "name": "brand-identity-kit",
+  "description": "Install this pack to generate a complete brand identity kit including logo, color palette, typography, and mockups.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/brand-identity-kit"
+}

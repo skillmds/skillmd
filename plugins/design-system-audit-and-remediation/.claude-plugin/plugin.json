@@ -1,0 +1,9 @@
+{
+  "name": "design-system-audit-and-remediation",
+  "description": "Identify design debt, audit tokens, and enforce consistency across a product.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/design-system-audit-and-remediation"
+}

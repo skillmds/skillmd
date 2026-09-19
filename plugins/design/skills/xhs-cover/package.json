@@ -1,0 +1,27 @@
+{
+  "name": "xhs-cover-skill",
+  "version": "1.0.0",
+  "description": "小红书封面生成器 - Codex Skill，优先使用 GPT Image 2，Gemini CLI 备用",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "sharp": "^0.33.0"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs"
+  },
+  "author": "Vivi",
+  "license": "MIT",
+  "keywords": [
+    "xiaohongshu",
+    "xhs",
+    "cover",
+    "codex",
+    "claude-code",
+    "skill",
+    "gpt-image",
+    "gemini"
+  ]
+}

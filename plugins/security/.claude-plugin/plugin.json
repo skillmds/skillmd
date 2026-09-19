@@ -1,0 +1,9 @@
+{
+  "name": "security",
+  "description": "Security audits, vulnerability scanning and secure coding.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/security"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "data-ml",
+  "description": "SQL, analytics, datasets, models and machine-learning workflows.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/data-ml"
+}

@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+*.log
+
+# Config (contains API keys — never commit)
+config.json
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/

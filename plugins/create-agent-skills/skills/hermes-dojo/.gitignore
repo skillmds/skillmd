@@ -1,0 +1,6 @@
+data/metrics.json
+__pycache__/
+*.pyc
+ai/
+DEMO_SCRIPT.md
+TWEET_DRAFT.md

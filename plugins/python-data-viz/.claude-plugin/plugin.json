@@ -1,0 +1,9 @@
+{
+  "name": "python-data-viz",
+  "description": "For data scientists to create static and interactive plots using Python libraries.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/python-data-viz"
+}

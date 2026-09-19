@@ -1,0 +1,9 @@
+{
+  "name": "mcp-security-audit-pipeline",
+  "description": "Audit MCP servers for secrets exposure, shell injection, and supply chain risks.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/mcp-security-audit-pipeline"
+}

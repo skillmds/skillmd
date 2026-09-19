@@ -1,0 +1,59 @@
+{
+  "name": "ifq-design-skills",
+  "version": "3.0.0",
+  "private": true,
+  "description": "IFQ Design Skills — agent-native design skill that turns ordinary human intent into verified HTML-first artifacts. The core design loop is ZERO-install: route mode → fork template → write HTML → verify placeholders → print a file:// preview URL. Heavy dependencies (playwright/pdf-lib/pptxgenjs/sharp) are only required when MP4/GIF/PDF/PPTX export is explicitly requested, and remain optional.",
+  "author": "ifq.ai",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/peixl/ifq-design-skills",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/peixl/ifq-design-skills.git"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/index.test.mjs",
+    "test:ci": "npm test && npm run validate",
+    "sync:year": "node scripts/sync-authored-year.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "validate": "npm run verify:ci",
+    "verify:ci": "npm run sync:year -- --check && npm run smoke && npm run evals:validate",
+    "evals:validate": "node scripts/validate-evals.mjs",
+    "preview": "node scripts/preview.mjs",
+    "verify:lite": "node scripts/verify-lite.mjs",
+    "verify": "python3 scripts/verify.py",
+    "verify:publish": "node scripts/validate_publish.mjs",
+    "quality:score": "node scripts/quality-score.mjs",
+    "quality:score:json": "node scripts/quality-score.mjs --json",
+    "render:video": "node scripts/render-video.js",
+    "export:pdf": "node scripts/export_deck_pdf.mjs",
+    "export:pptx": "node scripts/export_deck_pptx.mjs",
+    "export:stage-pdf": "node scripts/export_deck_stage_pdf.mjs",
+    "install:browsers": "npx playwright install chromium",
+    "install:export": "npm install --no-save playwright pdf-lib pptxgenjs sharp && npx playwright install chromium"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "playwright": "^1.47.0",
+    "pdf-lib": "^1.17.1",
+    "pptxgenjs": "^3.12.0",
+    "sharp": "^0.33.4"
+  },
+  "peerDependencies": {
+    "ffmpeg-system": ">=4.4"
+  },
+  "peerDependenciesMeta": {
+    "ffmpeg-system": {
+      "optional": true
+    }
+  },
+  "systemRequirements": {
+    "note": "The core design loop (HTML + preview in system browser + lite verify) requires ZERO system installs. The items below are ONLY needed when the user actually asks for an export.",
+    "ffmpeg": ">=4.4  (ONLY for MP4/GIF export; install via `brew install ffmpeg` or `apt install ffmpeg`)",
+    "python": ">=3.9  (ONLY for the deep variant of verify.py — the lite variant `verify-lite.mjs` is pure Node, no python)",
+    "chromium": "ONLY for MP4/PDF/PPTX export; install via `npm run install:export` (pulls playwright + peers + chromium in one shot)"
+  }
+}

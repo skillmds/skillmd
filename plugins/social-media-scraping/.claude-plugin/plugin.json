@@ -1,0 +1,9 @@
+{
+  "name": "social-media-scraping",
+  "description": "Extract structured data from social media platforms via browser automation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/social-media-scraping"
+}

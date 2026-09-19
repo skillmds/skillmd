@@ -1,0 +1,9 @@
+{
+  "name": "cloud-devops",
+  "description": "Docker, Kubernetes, CI/CD and cloud (AWS/Azure/GCP) automation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "SkillMD"
+  },
+  "homepage": "https://skillmd.com/plugins/skillmd/cloud-devops"
+}
