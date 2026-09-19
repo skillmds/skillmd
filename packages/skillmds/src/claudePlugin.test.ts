@@ -18,7 +18,21 @@ describe("claude plugin driver", () => {
     // The marketplace is added every time: it is idempotent, so probing first
     // would be an extra call that can itself fail.
     expect(calls[0]).toEqual(["claude", "plugin", "marketplace", "add", MARKETPLACE_URL]);
-    expect(calls[1]).toEqual(["claude", "plugin", "install", "docs-writing@skillmd"]);
+    // `add` keeps an existing copy, however old; the registry gains plugins
+    // daily, so a refresh runs before the install or yesterday's cache decides
+    // whether today's plugin exists.
+    expect(calls[1]).toEqual(["claude", "plugin", "marketplace", "update", "skillmd"]);
+    expect(calls[2]).toEqual(["claude", "plugin", "install", "docs-writing@skillmd"]);
+  });
+
+  it("installs anyway when the refresh fails", async () => {
+    // A refresh needs the network; the cached marketplace may still hold the
+    // plugin, so a failed update must not cost the user the managed install.
+    const exec = async (_f: string, args: string[]) => {
+      if (args[1] === "marketplace" && args[2] === "update") throw new Error("offline");
+      return { stdout: args[1] === "install" ? "Successfully installed plugin: x@skillmd" : "", stderr: "" };
+    };
+    expect((await installClaudePlugin("skillmd", "x", { exec })).ok).toBe(true);
   });
 
   // The real CLI exits 0 on this, which is the trap the whole module is built

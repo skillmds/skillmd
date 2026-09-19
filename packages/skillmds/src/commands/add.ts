@@ -755,18 +755,27 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
  *  Returns null whenever the managed path is unavailable (no `claude` on PATH,
  *  or a plugin the marketplace does not list) and the caller installs the
  *  members as skills for every agent, Claude Code included. */
-async function tryPluginInstall(arg: string, flags: AddFlags): Promise<{ agent: string; note: string; name: string } | null> {
+type ManagedAttempt =
+  | { ok: true; agent: string; note: string; name: string }
+  | { ok: false; reason: string };
+
+async function tryPluginInstall(arg: string, flags: AddFlags): Promise<ManagedAttempt | null> {
   let spec;
   try { spec = parseSource(arg, { ref: flags.ref }); } catch { return null; }
   if (spec.kind !== "plugin") return null;
   // --agent/-s narrow what gets written and --mode copy asks for owned copies;
   // a managed plugin honours none of those, so those callers want the skills.
   if (flags.agent?.length || flags.skill?.length || flags.list || flags.mode === "copy") return null;
+  // No Claude Code on this machine is not a failure — there is nothing to
+  // manage the plugin, so the skills are the right answer and saying so would
+  // only be noise. A *failed* attempt is different: the user asked for a
+  // plugin, got a pile of skills, and deserves to know which step broke.
   if (!(await claudeCliAvailable())) return null;
 
   const res = await installClaudePlugin(spec.owner, spec.slug);
-  if (!res.ok) return null;
+  if (!res.ok) return { ok: false, reason: res.reason };
   return {
+    ok: true,
     agent: "claude-code",
     name: res.name,
     note: `installed ${res.name} as a Claude Code plugin — manage it with \`claude plugin\` or /plugin`,
@@ -780,7 +789,40 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   // Unconditional: runAddWithUI always supplies deps, so gating this on "no
   // deps" would mean the plugin manager never ran outside a bare runAdd() call.
   // Anything that is not a plugin: source returns before a process is spawned.
-  const managed = await tryPluginInstall(arg, flags);
+  const attempt = await tryPluginInstall(arg, flags);
+  const managed = attempt?.ok ? attempt : null;
+  const managedNotices: Notice[] = !attempt
+    ? []
+    : attempt.ok
+      ? [infoNotice(attempt.note)]
+      : [warnNotice(`could not install this as a Claude Code plugin (${attempt.reason}) — installing its skills instead`)];
+
+  // resolveScope can prompt, so it is asked once and reused: the managed path
+  // below needs the scope to know which agents are present, and the ordinary
+  // path needs it further down.
+  let scopeOnce: Awaited<ReturnType<typeof resolveScope>> | undefined;
+  const scopeOf = async () => (scopeOnce ??= await resolveScope(flags, d));
+
+  // The plugin is installed and no other agent is on this machine: the run is
+  // over. Falling through would download the member archive for nobody — work
+  // the user is waiting on, and, against a rate-limited API, a failed exit code
+  // on a run that actually succeeded.
+  if (managed) {
+    const pre = await scopeOf();
+    if (!pre) return finish(flags, { kind: "cancel" });
+    const others = detectAgents(pre.scope).filter((id) => id !== managed.agent);
+    if (!others.length) {
+      const paths: PathCtx = { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() };
+      return finish(flags, {
+        kind: "install",
+        scope: pre.scope.global ? "global" : "project",
+        records: [],
+        notices: [...(pre.note ? [infoNotice(pre.note)] : []), ...managedNotices],
+        paths,
+        managed: managed.name,
+      });
+    }
+  }
 
   let candidates: AddCandidate[];
   try {
@@ -799,20 +841,17 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   const early = gate(flags, d, candidates);
   if (early) return early;
 
-  const resolved = await resolveScope(flags, d);
+  const resolved = await scopeOf();
   if (!resolved) return finish(flags, { kind: "cancel" });
   const scope = resolved.scope;
   const notices: Notice[] = resolved.note ? [infoNotice(resolved.note)] : [];
-  if (managed) notices.push(infoNotice(managed.note));
+  notices.push(...managedNotices);
 
   // Claude Code already has the plugin; the remaining agents still need the
   // skills. Dropping it here is what stops a managed install from silently
-  // leaving a Cursor or Windsurf user with nothing.
+  // leaving a Cursor or Windsurf user with nothing — and stops Claude Code
+  // from getting the same plugin twice, once managed and once as loose skills.
   const detected = detectAgents(scope).filter((id) => id !== managed?.agent);
-  if (managed && !detected.length) {
-    const paths: PathCtx = { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() };
-    return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records: [], notices, paths, managed: managed.name });
-  }
   const chosen = await chooseTargets(flags, d, scope, detected);
   if (!chosen) return finish(flags, { kind: "cancel" });
   notices.push(...chosen.notices);

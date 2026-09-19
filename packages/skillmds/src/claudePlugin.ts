@@ -130,6 +130,16 @@ export async function installClaudePlugin(
   } catch (e) {
     return { ok: false, reason: `could not add the SkillMD marketplace: ${msg(e)}` };
   }
+  // `add` on a marketplace that is already registered keeps the copy on disk,
+  // which may be weeks old — and the registry gains plugins daily. Without this
+  // refresh, anyone who added the marketplace before today's plugin existed
+  // gets "not found in marketplace" and silently falls back to loose skills.
+  // Failure is not fatal: the cached copy may still hold the plugin.
+  try {
+    await sh("claude", ["plugin", "marketplace", "update", MARKETPLACE_NAME]);
+  } catch {
+    /* stale is better than stopped */
+  }
   let out: string;
   try {
     const r = await sh("claude", ["plugin", "install", qualified]);

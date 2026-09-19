@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -717,5 +717,85 @@ describe("plugin (pack:) resolution", () => {
   it("surfaces an archive failure as a registry error", async () => {
     const doFetch = (async () => new Response("nope", { status: 404 })) as unknown as typeof fetch;
     await expect(fetchPackArchive("https://api.example", "o", "s", undefined, doFetch)).rejects.toThrow(/404/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The managed-plugin path. This is where `plugin:owner/slug` stops being a
+// bundle of skills and becomes a real Claude Code plugin, and both ways of
+// getting it wrong were shipped once: a success that still downloaded the
+// member archive nobody needed (and failed the run on a 429), and a failure
+// that dumped loose skills with no word about why.
+// ---------------------------------------------------------------------------
+vi.mock("../claudePlugin.js", async (orig) => ({
+  ...(await orig<typeof import("../claudePlugin.js")>()),
+  claudeCliAvailable: async () => claudeStub.available,
+  installClaudePlugin: async () => claudeStub.result,
+}));
+const claudeStub: { available: boolean; result: { ok: true; name: string; marketplace: string } | { ok: false; reason: string } } = {
+  available: true,
+  result: { ok: true, name: "design@skillmd", marketplace: "skillmd" },
+};
+
+describe("plugin: sources install as Claude Code plugins", () => {
+  it("stops after the managed install when Claude Code is the only agent here", async () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
+    claudeStub.available = true;
+    claudeStub.result = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
+    let resolved = 0;
+    const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true }, {
+      resolve: async () => { resolved++; return []; },
+      fireInstall: () => {},
+    });
+    // The plugin is already installed; fetching its members would be a download
+    // for nobody — and the registry answers artifact floods with a 429, which
+    // used to turn a successful install into exit 1.
+    expect(resolved).toBe(0);
+    expect(run.exitCode).toBe(0);
+    expect(stripAnsi(run.output)).toContain("design@skillmd");
+    expect(existsSync(join(cwd, ".claude", "skills", "good"))).toBe(false);
+  });
+
+  it("still installs the skills for every other agent", async () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
+    mkdirSync(join(cwd, ".cursor", "skills"), { recursive: true });
+    claudeStub.available = true;
+    claudeStub.result = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
+    const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
+      depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
+    const out = stripAnsi(run.output);
+    // Cursor has no plugin system, so it gets the skill …
+    expect(existsSync(join(cwd, ".cursor", "skills", "good"))).toBe(true);
+    // … and Claude Code must not get the same content twice, once managed and
+    // once as a loose skill.
+    expect(existsSync(join(cwd, ".claude", "skills", "good"))).toBe(false);
+    expect(out).toContain("design@skillmd");
+  });
+
+  it("says why it fell back instead of silently dumping skills", async () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
+    claudeStub.available = true;
+    claudeStub.result = { ok: false, reason: 'Plugin "design" not found in marketplace "skillmd"' };
+    const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
+      depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
+    const out = stripAnsi(run.output);
+    expect(out).toContain("not found in marketplace");
+    // The fallback is the whole point of the fallback: the skills still land.
+    expect(existsSync(join(cwd, ".claude", "skills", "good"))).toBe(true);
+  });
+
+  it("says nothing when there is no Claude Code to manage the plugin", async () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".cursor", "skills"), { recursive: true });
+    claudeStub.available = false;
+    const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
+      depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
+    // Not a failure — there is nothing to manage the plugin, so skills are the
+    // right answer and a warning would be noise on every non-Claude machine.
+    expect(stripAnsi(run.output)).not.toContain("could not install");
+    expect(existsSync(join(cwd, ".cursor", "skills", "good"))).toBe(true);
   });
 });
