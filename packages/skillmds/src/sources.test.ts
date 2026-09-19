@@ -20,12 +20,24 @@ const cases: Array<[string, ReturnType<typeof parseSource>]> = [
   ["https://github.com/o/r/tree/dev/skills/x", { kind: "github", owner: "o", repo: "r", ref: "dev", subpath: "skills/x", display: "https://github.com/o/r/tree/dev/skills/x" }],
   ["https://github.com/o/r/blob/main/skills/x/SKILL.md", { kind: "github", owner: "o", repo: "r", ref: "main", subpath: "skills/x", display: "https://github.com/o/r/blob/main/skills/x/SKILL.md" }],
   ["https://gist.github.com/u/0123456789abcdef", { kind: "gist", user: "u", id: "0123456789abcdef", display: "https://gist.github.com/u/0123456789abcdef" }],
+  ["pack:skillmd/frontend-ui", { kind: "pack", owner: "skillmd", slug: "frontend-ui", display: "pack:skillmd/frontend-ui" }],
+  ["PACK:acme/design", { kind: "pack", owner: "acme", slug: "design", display: "PACK:acme/design" }],
 ];
 
 describe("parseSource", () => {
   for (const [input, expected] of cases) {
     it(`parses ${input}`, () => { expect(parseSource(input, { exists: () => false })).toEqual(expected); });
   }
+  // A plugin prefix is explicit, so it must never be re-read as a repo path or
+  // shadowed by a directory of the same name the way a bare slug can be.
+  it("keeps pack: a plugin even when a like-named path exists", () => {
+    expect(parseSource("pack:skillmd/frontend-ui", { exists: () => true }).kind).toBe("pack");
+  });
+  it("rejects a pack source that is not owner/slug", () => {
+    for (const bad of ["pack:frontend-ui", "pack:o/r/extra", "pack:", "pack:o/r#dev"]) {
+      expect(() => parseSource(bad, { exists: () => false })).toThrow(/pack:owner\/slug/);
+    }
+  });
   it("treats an existing path as local even without ./", () => {
     expect(parseSource("my-skill", { exists: (p) => p === "my-skill" }).kind).toBe("local");
   });
@@ -66,6 +78,7 @@ describe("sourceId", () => {
     [{ kind: "github", owner: "o", repo: "r", subpath: "sub", ref: "dev", skill: "sk", display: "" }, "github:o/r/sub#dev@sk"],
     [{ kind: "gist", user: "u", id: "abc", display: "" }, "gist:u/abc"],
     [{ kind: "local", path: "./x", display: "./x" }, "local:./x"],
+    [{ kind: "pack", owner: "skillmd", slug: "frontend-ui", display: "" }, "pack:skillmd/frontend-ui"],
   ];
   for (const [spec, expected] of rows) {
     it(`ids ${expected}`, () => { expect(sourceId(spec)).toBe(expected); });

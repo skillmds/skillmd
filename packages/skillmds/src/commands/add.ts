@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
 import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
-import type { RegistrySkill } from "../api.js";
+import type { Client, RegistrySkill } from "../api.js";
 import { collectFiles, resolvePackFiles, resolveSource } from "../source.js";
 import { looksLikeProject } from "../project.js";
 import { agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
@@ -196,6 +196,126 @@ function provenanceFor(arg: string): string {
   }
 }
 
+/** One registry skill becomes one candidate.
+ *
+ *  Shared by the bare-slug path and the plugin path, which differ only in what
+ *  a failure means: `owner/name` may still be a GitHub repo, so it falls back;
+ *  a plugin member came out of the registry's own member list, so a failure
+ *  there is a real failure and must surface. */
+export async function registryCandidate(
+  owner: string,
+  name: string,
+  source: string,
+  client: Pick<Client, "api" | "base" | "token">,
+): Promise<AddCandidate> {
+  const registrySlug = `${owner}/${name}`;
+  const skill = await client.api<RegistrySkill>(`/api/skills/${owner}/${name}`);
+  const skillName = skill.slug.split("/")[1] || name;
+  const meta = {
+    name: skillName, slug: skillName, registrySlug, source, commit_sha: skill.commit_sha ?? undefined,
+    verified: skill.verified, type: skill.type, securityFlags: skill.security_flags,
+  };
+  if (skill.type === "pack") {
+    // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
+    // upstream deletion/force-push. Fall back to a live GitHub fetch.
+    const bundle = await fetchBundle(client.base, registrySlug, client.token);
+    if (bundle && bundle.length) {
+      const sk = bundle.find((file) => file.path === "SKILL.md");
+      const unverified = bundle.filter((file) => file.unverified).length;
+      return {
+        ...meta,
+        raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
+        files: bundle,
+        ...(unverified ? { note: unverifiedFilesNote(unverified) } : {}),
+      };
+    }
+    const pack = await resolvePackFiles(skill);
+    if (pack) return { ...meta, ...pack };
+  }
+  return { ...meta, raw: skillMdFor(skill) };
+}
+
+/** A registry plugin's members, in the order the plugin defines them.
+ *
+ *  `/api/packs/:owner/:slug` pages at 200; a plugin can hold hundreds, and the
+ *  site has already shipped the bug where only the first page counted as "the
+ *  whole plugin", so this walks to `item_total` rather than trusting one call. */
+export async function fetchPackMembers(
+  api: Client["api"],
+  owner: string,
+  slug: string,
+): Promise<{ name: string; members: PackMember[] }> {
+  const PAGE = 200;
+  const members: PackMember[] = [];
+  let name = slug;
+  let total = Infinity;
+  for (let offset = 0; members.length < total; offset += PAGE) {
+    const page = await api<PackResponse>(`/api/packs/${owner}/${slug}?limit=${PAGE}&offset=${offset}`);
+    name = page.name || name;
+    total = Number(page.item_total ?? 0);
+    const got = (page.items ?? [])
+      .map((i) => ({ slug: String(i.slug ?? ""), type: i.type, verified: Boolean(i.verified) }))
+      .filter((i) => i.slug);
+    if (!got.length) break; // never spin if the server stops returning rows
+    members.push(...got);
+  }
+  return { name, members };
+}
+
+/** The directory each member gets inside the pack archive.
+ *
+ *  Mirrors the server's own naming in `/api/packs/:owner/:slug/download`: the
+ *  skill name, falling back to `owner-name` when two owners contribute the same
+ *  name. Recomputing it from the same ordered member list is what lets us map
+ *  archive entries back to slugs without trusting zip key order. */
+export function packDirNames(slugs: string[]): string[] {
+  const used = new Set<string>();
+  return slugs.map((slug) => {
+    const [owner, name] = slug.split("/");
+    let dir = name ?? slug;
+    if (used.has(dir)) dir = `${owner}-${name}`;
+    used.add(dir);
+    return dir;
+  });
+}
+
+/** Every member's SKILL.md, in one request.
+ *
+ *  Resolving members one at a time through `/api/skills/:owner/:name` is what a
+ *  plugin install looks like to a rate limiter: a 30-skill plugin is 30 calls
+ *  and trips it (observed: HTTP 429, retry_after 2312s). The download endpoint
+ *  returns the whole set as a zip, already ordered, R2-hydrated and with
+ *  frontmatter reconstructed — the same one the website serves. */
+export async function fetchPackArchive(
+  base: string,
+  owner: string,
+  slug: string,
+  token: string | undefined,
+  doFetch: typeof fetch = fetch,
+): Promise<Map<string, string>> {
+  const headers: Record<string, string> = { accept: "application/zip" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await doFetch(`${base}/api/packs/${owner}/${slug}/download`, { headers });
+  if (!res.ok) throw new RegistryError(`SkillMD API ${res.status} on /api/packs/${owner}/${slug}/download`, res.status);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const entries = unzipSync(bytes);
+  const out = new Map<string, string>();
+  for (const [path, data] of Object.entries(entries)) {
+    const m = /^(.+)\/SKILL\.md$/.exec(path);
+    if (m) out.set(m[1]!, strFromU8(data));
+  }
+  return out;
+}
+
+export interface PackMember { slug: string; type?: "single" | "pack"; verified?: boolean }
+
+interface PackResponse {
+  name?: string;
+  item_total?: number;
+  items?: { slug?: unknown; type?: "single" | "pack"; verified?: unknown }[];
+}
+
 /** The real deps. Built per run, because whether a prompt may be opened is a
  *  property of *this* invocation's flags (-y, --json, host agent, TTY). */
 function makeDefaultDeps(flags: AddFlags): AddDeps {
@@ -208,6 +328,60 @@ function makeDefaultDeps(flags: AddFlags): AddDeps {
     async resolve(arg, f) {
       const spec = parseSource(arg, { ref: f.ref });
       const source = sourceId(spec);
+      // A plugin expands to its members. Each becomes an ordinary candidate, so
+      // scope, agent targeting, linting and the lock file all behave exactly as
+      // they do for a single skill — this returns many rather than one.
+      if (spec.kind === "pack") {
+        const { api, base: apiBase, token, fetch: doFetch } = createClient(f);
+        const { name: packName, members } = await fetchPackMembers(api, spec.owner, spec.slug);
+        if (!members.length) throw new Error(`plugin ${spec.owner}/${spec.slug} has no installable skills`);
+        const archive = await fetchPackArchive(apiBase, spec.owner, spec.slug, token, doFetch);
+        const dirs = packDirNames(members.map((m) => m.slug));
+        const out: AddCandidate[] = [];
+        const missing: string[] = [];
+        members.forEach((m, i) => {
+          const raw = archive.get(dirs[i]!);
+          if (!raw) { missing.push(m.slug); return; }
+          // The archive's directory, not the bare skill name: two owners can
+          // contribute the same name, and using the bare one silently installs
+          // the second over the first (observed: a 31-member plugin landing 30).
+          const name = dirs[i]!;
+          out.push({
+            name, slug: name, registrySlug: m.slug, source,
+            raw, verified: m.verified, type: m.type,
+          });
+        });
+        // The archive carries one SKILL.md per member, so multi-file members
+        // arrive without their companions. Those are the minority (3 of 30 in
+        // the plugin this was built against), so fetching just their bundles
+        // completes them without going back to one request per member.
+        const multi = out.filter((c) => c.type === "pack");
+        if (multi.length) {
+          let n = 0;
+          await Promise.all(Array.from({ length: Math.min(4, multi.length) }, async () => {
+            for (let i = n++; i < multi.length; i = n++) {
+              const c = multi[i]!;
+              try {
+                const bundle = await fetchBundle(apiBase, c.registrySlug!, token);
+                if (!bundle?.length) continue;
+                const sk = bundle.find((file) => file.path === "SKILL.md");
+                const unverified = bundle.filter((file) => file.unverified).length;
+                c.files = bundle;
+                if (sk) c.raw = sk.contents.toString("utf8");
+                if (unverified) c.note = unverifiedFilesNote(unverified);
+              } catch {
+                // Leave it as SKILL.md-only; installSkill already warns that a
+                // pack arrived without its assets.
+              }
+            }
+          }));
+        }
+        if (!out.length) throw new Error(`plugin ${spec.owner}/${spec.slug} returned no readable skills`);
+        const first = out[0]!;
+        first.note = `${out.length} skill${out.length === 1 ? "" : "s"} from the ${packName} plugin`
+          + (missing.length ? ` (${missing.length} member${missing.length === 1 ? "" : "s"} were not in the archive)` : "");
+        return out;
+      }
       // Everything that is not a bare owner/name is fetched directly; only a
       // registry slug gets the registry-first treatment below.
       if (spec.kind !== "slug") {
@@ -231,30 +405,7 @@ function makeDefaultDeps(flags: AddFlags): AddDeps {
       const registryHost = (() => { try { return new URL(apiBase).host; } catch { return "api.skillmd.com"; } })();
       const registrySlug = `${spec.owner}/${spec.name}`;
       try {
-        const skill = await api<RegistrySkill>(`/api/skills/${spec.owner}/${spec.name}`);
-        const skillName = skill.slug.split("/")[1] || spec.name;
-        const meta = {
-          name: skillName, slug: skillName, registrySlug, source, commit_sha: skill.commit_sha ?? undefined,
-          verified: skill.verified, type: skill.type, securityFlags: skill.security_flags,
-        };
-        if (skill.type === "pack") {
-          // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
-          // upstream deletion/force-push. Fall back to a live GitHub fetch.
-          const bundle = await fetchBundle(apiBase, registrySlug, token);
-          if (bundle && bundle.length) {
-            const sk = bundle.find((file) => file.path === "SKILL.md");
-            const unverified = bundle.filter((file) => file.unverified).length;
-            return [{
-              ...meta,
-              raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
-              files: bundle,
-              ...(unverified ? { note: unverifiedFilesNote(unverified) } : {}),
-            }];
-          }
-          const pack = await resolvePackFiles(skill);
-          if (pack) return [{ ...meta, ...pack }];
-        }
-        return [{ ...meta, raw: skillMdFor(skill) }];
+        return [await registryCandidate(spec.owner, spec.name, source, { api, base: apiBase, token })];
       } catch (e) {
         // A failed integrity check must never silently downgrade to an
         // unverified GitHub fetch — surface it so the install hard-blocks.

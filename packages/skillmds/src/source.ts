@@ -126,6 +126,12 @@ export async function resolveSource(arg: string, opts: RemoteOptions = {}): Prom
     if (raw.length > MAX_PACK_BYTES) throw tooBig(raw.length);
     return [{ path: spec.display, raw, slug: `gist-${spec.id.slice(0, 8)}` }];
   }
+  // A plugin has no single tree to fetch: add.ts expands it into its member
+  // slugs and resolves each one through the registry before anything lands
+  // here. Reaching this point means a caller skipped that expansion.
+  if (spec.kind === "pack") {
+    throw new Error(`"${spec.display}" is a plugin, not a single skill — install it with \`skillmd add ${spec.display}\`.`);
+  }
   const gh = asGithub(spec);
   // Whole-repo resolves walk the checkout without buffering contents, so only a
   // subpath fetch (which giget materialises as a pack) needs the size pre-check.

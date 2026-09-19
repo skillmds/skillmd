@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAdd, runAddWithUI, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError } from "./add.js";
+import { runAdd, runAddWithUI, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError, fetchPackMembers, packDirNames, fetchPackArchive } from "./add.js";
 import type { AddCandidate, AddDeps, AddFlags, AddUI } from "./add.js";
 import { IntegrityError, RegistryError } from "../api.js";
 import { readLock } from "../lock.js";
@@ -653,5 +653,69 @@ describe("defaultNeedsPrompt in a real run", () => {
     expect(r.exitCode).toBe(1);
     expect(r.output).toMatch(/-y/);
     expect(r.written).toHaveLength(0);
+  });
+});
+
+
+describe("plugin (pack:) resolution", () => {
+  // `/api/packs` pages at 200 and the site has already shipped the bug where
+  // page one was treated as the whole plugin, so walking to item_total is the
+  // behaviour worth pinning.
+  const pagedApi = (total: number) => {
+    const calls: string[] = [];
+    const api = (async (path: string) => {
+      calls.push(path);
+      const q = new URL(path, "https://x").searchParams;
+      const offset = Number(q.get("offset") ?? 0);
+      const limit = Number(q.get("limit") ?? 200);
+      const items = Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, i) => ({ slug: `o/s${offset + i}`, type: "single", verified: false }));
+      return { name: "Frontend UI", item_total: total, items };
+    }) as never;
+    return { api, calls };
+  };
+
+  it("returns every member of a single-page plugin", async () => {
+    const { api, calls } = pagedApi(3);
+    const got = await fetchPackMembers(api, "skillmd", "frontend-ui");
+    expect(got.members.map((m) => m.slug)).toEqual(["o/s0", "o/s1", "o/s2"]);
+    expect(got.name).toBe("Frontend UI");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("pages past the 200 limit instead of stopping at page one", async () => {
+    const { api, calls } = pagedApi(450);
+    const got = await fetchPackMembers(api, "skillmd", "big");
+    expect(got.members).toHaveLength(450);
+    expect(new Set(got.members.map((m) => m.slug)).size).toBe(450);
+    expect(calls).toHaveLength(3); // 200 + 200 + 50
+  });
+
+  it("stops rather than spinning when the server returns no rows", async () => {
+    const api = (async () => ({ name: "x", item_total: 99, items: [] })) as never;
+    await expect(fetchPackMembers(api, "o", "s")).resolves.toEqual({ name: "x", members: [] });
+  });
+
+  // The archive names directories by skill name, disambiguating collisions with
+  // the owner. Mapping entries back to slugs depends on reproducing that exactly.
+  it("reproduces the server's archive directory naming", () => {
+    expect(packDirNames(["a/pdf", "b/docx"])).toEqual(["pdf", "docx"]);
+    expect(packDirNames(["a/pdf", "b/pdf"])).toEqual(["pdf", "b-pdf"]);
+  });
+
+  it("reads every SKILL.md out of one archive request", async () => {
+    const { zipSync, strToU8 } = await import("fflate");
+    const zip = zipSync({ "pdf/SKILL.md": strToU8("# PDF"), "docx/SKILL.md": strToU8("# DOCX"), "README.md": strToU8("x") });
+    let calls = 0;
+    const doFetch = (async () => { calls++; return new Response(zip, { status: 200 }); }) as unknown as typeof fetch;
+    const got = await fetchPackArchive("https://api.example", "skillmd", "office", undefined, doFetch);
+    expect(calls).toBe(1); // one request for the whole plugin, not one per member
+    expect(got.get("pdf")).toBe("# PDF");
+    expect(got.get("docx")).toBe("# DOCX");
+    expect(got.has("README.md")).toBe(false);
+  });
+
+  it("surfaces an archive failure as a registry error", async () => {
+    const doFetch = (async () => new Response("nope", { status: 404 })) as unknown as typeof fetch;
+    await expect(fetchPackArchive("https://api.example", "o", "s", undefined, doFetch)).rejects.toThrow(/404/);
   });
 });
