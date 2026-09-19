@@ -20,18 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch the published manifest
-        run: |
-          curl -fsSL --retry 3 https://skillmd.com/.claude-plugin/marketplace.json -o /tmp/marketplace.json
-          # A truncated or error body must never land on the default branch:
-          # every plugin in the tab would disappear until the next run.
-          node -e '
-            const m = require("/tmp/marketplace.json");
-            if (m.name !== "skillmd" || !Array.isArray(m.plugins) || m.plugins.length < 100) {
-              throw new Error(`refusing to commit a manifest with ${m.plugins?.length} plugins`);
-            }
-          '
-          mv /tmp/marketplace.json .claude-plugin/marketplace.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/refresh-marketplace.mjs
       - name: Commit when it changed
         run: |
           git config user.name "github-actions[bot]"
