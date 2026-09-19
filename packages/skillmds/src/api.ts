@@ -84,15 +84,33 @@ export type Client = ReturnType<typeof createClient>;
 export interface BundleFile {
   path: string;
   contents: Buffer;
+  /** The registry served this file as a URL but recorded no sha256 for it, so
+   *  its bytes could only be checked against the transport (https + an
+   *  allow-listed host), never against the registry's own record. */
+  unverified?: boolean;
 }
 
 export interface BundleOptions { fetch?: typeof fetch; timeoutMs?: number }
 
-/** Fetch a pack's full file set from the registry bundle. EVERY file must carry
- *  a sha256 and match it — whether delivered inline (base64) or by URL from an
- *  allow-listed host. A missing or mismatching hash blocks the whole install:
- *  the registry is the integrity authority, the transport is not. Returns null
- *  if the bundle is unavailable, letting the caller fall back to GitHub. */
+/** Fetch a pack's full file set from the registry bundle.
+ *
+ *  Integrity, in two tiers, because "hash mismatch" and "no hash on record"
+ *  are different events:
+ *
+ *  - A file whose bytes DISAGREE with a recorded sha256 aborts the whole
+ *    install. That is tampering (or drift) and never degrades to a fetch.
+ *  - Bytes the REGISTRY itself serves (inline base64) must carry a hash. The
+ *    one exception is the generated SKILL.md, which is reconstructed per
+ *    request and therefore has nothing stable to hash against.
+ *  - A file delivered by URL from an allow-listed host with NO hash on record
+ *    is fetched and flagged `unverified`. The registry records hashes only for
+ *    companions whose bytes it hosts; the rest are links back to the source
+ *    repo, and refusing them would make most packs uninstallable while adding
+ *    no trust — those bytes come over https from the same repo the GitHub
+ *    fallback path already reads. The caller surfaces the flag to the user.
+ *
+ *  Returns null if the bundle is unavailable, letting the caller fall back to
+ *  GitHub. */
 export async function fetchBundle(base: string, slug: string, token?: string, opts: BundleOptions = {}): Promise<BundleFile[] | null> {
   const doFetch = timedFetch(opts.fetch ?? fetch, opts.timeoutMs ?? FETCH_TIMEOUT_MS);
   const headers: Record<string, string> = { accept: "application/json" };
@@ -106,27 +124,28 @@ export async function fetchBundle(base: string, slug: string, token?: string, op
   let bytes = 0;
   for (const f of data.files) {
     let contents: Buffer;
+    let fromUrl = false;
     if (f.content_base64 != null) {
       contents = Buffer.from(f.content_base64, "base64");
     } else if (f.source_url && isAllowedSourceUrl(f.source_url)) {
-      if (!f.sha256) throw new IntegrityError(`"${f.path}" is delivered by URL but the registry recorded no sha256 for it — refusing to install unverifiable content`);
       const r = await doFetch(f.source_url).catch(() => null);
       if (!r || !r.ok) throw new Error(`could not fetch companion file "${f.path}" from ${hostOf(f.source_url)}`);
       contents = Buffer.from(await r.arrayBuffer());
+      fromUrl = true;
     } else {
       continue; // unknown delivery / disallowed host: skip, never write
     }
     bytes += contents.length;
     if (bytes > MAX_PACK_BYTES) throw new Error(`pack too large: > ${Math.round(MAX_PACK_BYTES / (1024 * 1024))}MB`);
-    // The reconstructed inline SKILL.md is the only file the registry may
-    // serve without a hash (it is generated, not stored).
     if (f.sha256) {
       const got = createHash("sha256").update(contents).digest("hex");
       if (got !== f.sha256) throw new IntegrityError(`integrity check failed for "${f.path}" (expected ${f.sha256.slice(0, 12)}…, got ${got.slice(0, 12)}…)`);
-    } else if (f.path !== "SKILL.md") {
+    } else if (!fromUrl && f.path !== "SKILL.md") {
+      // Bytes the registry served itself, with no hash to check them against
+      // and no generated-file excuse: that is a broken record, not a link.
       throw new IntegrityError(`"${f.path}" has no sha256 in the registry bundle — refusing to install unverifiable content`);
     }
-    out.push({ path: f.path, contents });
+    out.push({ path: f.path, contents, ...(fromUrl && !f.sha256 ? { unverified: true } : {}) });
   }
   return out;
 }

@@ -174,7 +174,11 @@ describe("fetchBundle hard integrity + caps", () => {
     const f: FetchLike = async () => jsonResponse({ files: [{ path: "a.txt", content_base64: Buffer.from("hi").toString("base64"), sha256: sha("nope") }] });
     await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toBeInstanceOf(IntegrityError);
   });
-  it("requires a sha256 for source_url files and verifies the fetched bytes", async () => {
+  it("installs a hashless source_url file but flags it unverified", async () => {
+    // The registry records hashes only for companions whose bytes it hosts.
+    // A link back to the source repo with no hash must still install — it is
+    // the same https-from-an-allow-listed-host trust as the GitHub fallback —
+    // but the caller has to be able to tell the two apart.
     const f: FetchLike = async (url) => {
       if (String(url).includes("/bundle")) return jsonResponse({ files: [
         { path: "SKILL.md", content_base64: Buffer.from("# s").toString("base64"), sha256: sha("# s") },
@@ -183,7 +187,27 @@ describe("fetchBundle hard integrity + caps", () => {
       ] });
       return new Response("REF", { status: 200 });
     };
-    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/nohash\.md.*no sha256/);
+    const out = await fetchBundle("https://api.test", "o/n", undefined, { fetch: f });
+    expect(out?.map((x) => x.path)).toEqual(["SKILL.md", "ref.md", "nohash.md"]);
+    expect(out?.find((x) => x.path === "nohash.md")?.unverified).toBe(true);
+    expect(out?.find((x) => x.path === "ref.md")?.unverified).toBeUndefined();
+    expect(out?.find((x) => x.path === "SKILL.md")?.unverified).toBeUndefined();
+  });
+
+  it("still refuses a hashless file the registry served inline", async () => {
+    // Nothing to check these bytes against and no generated-file excuse: the
+    // registry's record is broken, so the install stops.
+    const f: FetchLike = async () => jsonResponse({ files: [
+      { path: "ref.md", content_base64: Buffer.from("REF").toString("base64"), storage: "r2" },
+    ] });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/ref\.md.*no sha256/);
+  });
+
+  it("refuses a source_url file whose fetched bytes contradict the recorded hash", async () => {
+    const f: FetchLike = async (url) => String(url).includes("/bundle")
+      ? jsonResponse({ files: [{ path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("EXPECTED") }] })
+      : new Response("TAMPERED", { status: 200 });
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toBeInstanceOf(IntegrityError);
   });
   it("accepts a bundle whose url-delivered file matches its hash", async () => {
     const f: FetchLike = async (url) => String(url).includes("/bundle")

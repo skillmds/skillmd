@@ -143,6 +143,15 @@ async function promptAgentsInteractive(ctx: { detected: string[]; dirFor: (id: s
   return p.isCancel(picked) ? null : (picked as string[]);
 }
 
+/** Caveat attached when some of a pack's companion files came straight from
+ *  the source repo because the registry holds no checksum for them. The bytes
+ *  are still https from an allow-listed host — what is missing is the
+ *  registry's own record of what they should be. */
+export function unverifiedFilesNote(n: number): string {
+  const [f, it] = n === 1 ? ["file", "it"] : ["files", "them"];
+  return `${n} companion ${f} came straight from the source repo — the registry holds no checksum for ${it}, so only the connection was verified`;
+}
+
 /** Caveat attached when a registry slug ends up installed from GitHub only
  *  because the registry itself couldn't be reached. */
 export function registryFallbackNote(host: string): string {
@@ -234,7 +243,13 @@ function makeDefaultDeps(flags: AddFlags): AddDeps {
           const bundle = await fetchBundle(apiBase, registrySlug, token);
           if (bundle && bundle.length) {
             const sk = bundle.find((file) => file.path === "SKILL.md");
-            return [{ ...meta, raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill), files: bundle }];
+            const unverified = bundle.filter((file) => file.unverified).length;
+            return [{
+              ...meta,
+              raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
+              files: bundle,
+              ...(unverified ? { note: unverifiedFilesNote(unverified) } : {}),
+            }];
           }
           const pack = await resolvePackFiles(skill);
           if (pack) return [{ ...meta, ...pack }];
