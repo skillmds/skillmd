@@ -19,9 +19,47 @@
 //   * only the curated plugins are listed in the marketplace; a community
 //     plugin resolves to "not found in marketplace".
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+
+/** Where the `claude` binary actually is.
+ *
+ *  Not just "claude": on Windows an npm-installed Claude Code is `claude.cmd`,
+ *  and since the CVE-2024-27980 fix Node refuses to execFile a .cmd without a
+ *  shell. Passing the bare name there fails with ENOENT, claudeCliAvailable()
+ *  reports false, and every install on that machine quietly takes the fallback
+ *  — the exact failure this module exists to avoid, on a large share of Windows
+ *  installs. So resolve the real file first, honouring PATHEXT, and fall back
+ *  to the paths the native installer uses when PATH has not been reloaded. */
+export function resolveClaudeBin(env: NodeJS.ProcessEnv = process.env): string | null {
+  const override = env.SKILLMD_CLAUDE_BIN;
+  if (override) return existsSync(override) ? override : null;
+  const win = process.platform === "win32";
+  const exts = win ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
+  // The native installer drops it here and does not always re-export PATH into
+  // an already-open shell. Home comes from the env so a caller that redirects
+  // HOME (tests, sandboxes) does not get the real machine's install.
+  const home = env.USERPROFILE || env.HOME || homedir();
+  dirs.push(join(home, ".local", "bin"), join(home, ".claude", "local"));
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const candidate = join(dir, `claude${ext.toLowerCase()}`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/** .cmd/.bat are batch scripts: only a shell can run them. Everything else is
+ *  spawned directly. The arguments are a constant URL and a plugin name that
+ *  marketplacePluginName() has already reduced to [a-z0-9-], so there is no
+ *  string for a shell to reinterpret. */
+const needsShell = (bin: string) => /\.(cmd|bat)$/i.test(bin);
 
 /** Where the marketplace manifest lives. Kept here so the CLI never has to be
  *  told the site's address by a caller that might pass a preview origin. */
@@ -40,10 +78,13 @@ export type PluginInstallOutcome =
 const TIMEOUT_MS = 120_000;
 
 function exec(deps: ClaudePluginDeps) {
-  return deps.exec ?? ((file: string, args: string[]) =>
-    run(file, args, { timeout: TIMEOUT_MS, windowsHide: true }).then((r) => ({
+  return deps.exec ?? ((file: string, args: string[]) => {
+    const bin = file === "claude" ? resolveClaudeBin() : file;
+    if (!bin) return Promise.reject(new Error("claude not found on PATH"));
+    return run(bin, args, { timeout: TIMEOUT_MS, windowsHide: true, shell: needsShell(bin) }).then((r) => ({
       stdout: String(r.stdout ?? ""), stderr: String(r.stderr ?? ""),
-    })));
+    }));
+  });
 }
 
 /** The name a plugin carries in the marketplace manifest.

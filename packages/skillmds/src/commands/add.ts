@@ -513,7 +513,10 @@ type CandidateRecord =
   | { kind: "blocked"; name: string; reason: string; message: string };
 
 type AddOutcome =
-  | { kind: "install"; scope: "global" | "project"; records: CandidateRecord[]; notices: Notice[]; paths: PathCtx }
+  // `managed` counts as a successful install on its own: a plugin handed to
+  // Claude Code produces no skill records, and without this the exit code is
+  // computed from an empty records list and reports failure.
+  | { kind: "install"; scope: "global" | "project"; records: CandidateRecord[]; notices: Notice[]; paths: PathCtx; managed?: string }
   | { kind: "list"; skills: { name: string; description: string }[] }
   | { kind: "fail"; error: string; blocked?: AddResult["blocked"]; notices?: Notice[] }
   | { kind: "cancel" };
@@ -536,7 +539,7 @@ function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
         ...outcome.notices,
         ...outcome.records.flatMap((r) => (r.kind === "installed" ? r.notices : [])),
       ].map((n) => n.text);
-      const exitCode: 0 | 1 = blocked.length > 0 || installed.length === 0 ? 1 : 0;
+      const exitCode: 0 | 1 = blocked.length > 0 || (installed.length === 0 && !outcome.managed) ? 1 : 0;
       const doc = { ok: exitCode === 0, scope: outcome.scope, installed, blocked, warnings };
       return {
         written, blocked, exitCode,
@@ -752,7 +755,7 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
  *  Returns null whenever the managed path is unavailable (no `claude` on PATH,
  *  or a plugin the marketplace does not list) and the caller installs the
  *  members as skills for every agent, Claude Code included. */
-async function tryPluginInstall(arg: string, flags: AddFlags): Promise<{ agent: string; note: string } | null> {
+async function tryPluginInstall(arg: string, flags: AddFlags): Promise<{ agent: string; note: string; name: string } | null> {
   let spec;
   try { spec = parseSource(arg, { ref: flags.ref }); } catch { return null; }
   if (spec.kind !== "plugin") return null;
@@ -765,6 +768,7 @@ async function tryPluginInstall(arg: string, flags: AddFlags): Promise<{ agent: 
   if (!res.ok) return null;
   return {
     agent: "claude-code",
+    name: res.name,
     note: `installed ${res.name} as a Claude Code plugin — manage it with \`claude plugin\` or /plugin`,
   };
 }
@@ -807,7 +811,7 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   const detected = detectAgents(scope).filter((id) => id !== managed?.agent);
   if (managed && !detected.length) {
     const paths: PathCtx = { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() };
-    return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records: [], notices, paths });
+    return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records: [], notices, paths, managed: managed.name });
   }
   const chosen = await chooseTargets(flags, d, scope, detected);
   if (!chosen) return finish(flags, { kind: "cancel" });
@@ -818,7 +822,7 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   for (const c of candidates) records.push(await installOne(c, ctx));
 
   const paths: PathCtx = { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() };
-  return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records, notices, paths });
+  return finish(flags, { kind: "install", scope: scope.global ? "global" : "project", records, notices, paths, ...(managed ? { managed: managed.name } : {}) });
 }
 
 /** `--copy` is the deprecated spelling of `--mode copy`; fold the two together

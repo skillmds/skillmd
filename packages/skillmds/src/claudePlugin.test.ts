@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { installClaudePlugin, claudeCliAvailable, marketplacePluginName, MARKETPLACE_URL } from "./claudePlugin.js";
+import { installClaudePlugin, claudeCliAvailable, marketplacePluginName, resolveClaudeBin, MARKETPLACE_URL } from "./claudePlugin.js";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ok = (stdout: string) => async () => ({ stdout, stderr: "" });
 
@@ -53,5 +56,32 @@ describe("marketplace plugin names", () => {
   it("kebab-cases both halves, as Claude Code requires", () => {
     expect(marketplacePluginName("Acme_Corp", "My Plugin!")).toBe("acme-corp-my-plugin");
     expect(marketplacePluginName("acme", "---")).toBe("acme-plugin");
+  });
+});
+
+describe("locating the claude binary", () => {
+  const win = process.platform === "win32";
+  const dir = mkdtempSync(join(tmpdir(), "claudebin-"));
+
+  it("honours an explicit override", () => {
+    const f = join(dir, "my-claude");
+    writeFileSync(f, "");
+    expect(resolveClaudeBin({ SKILLMD_CLAUDE_BIN: f } as NodeJS.ProcessEnv)).toBe(f);
+    expect(resolveClaudeBin({ SKILLMD_CLAUDE_BIN: join(dir, "nope") } as NodeJS.ProcessEnv)).toBeNull();
+  });
+
+  // The case that silently cost every npm-installed Windows user the managed
+  // path: the binary is claude.cmd, and a bare "claude" is not executable.
+  it.runIf(win)("finds claude.cmd via PATHEXT on Windows", () => {
+    const d = mkdtempSync(join(tmpdir(), "cmdpath-"));
+    writeFileSync(join(d, "claude.cmd"), "");
+    const got = resolveClaudeBin({ PATH: d, PATHEXT: ".COM;.EXE;.BAT;.CMD" } as NodeJS.ProcessEnv);
+    expect(got).toBe(join(d, "claude.cmd"));
+  });
+
+  it("returns null when nothing is installed", () => {
+    const empty = mkdtempSync(join(tmpdir(), "emptypath-"));
+    mkdirSync(join(empty, "sub"), { recursive: true });
+    expect(resolveClaudeBin({ PATH: join(empty, "sub"), HOME: empty, USERPROFILE: empty } as NodeJS.ProcessEnv)).toBeNull();
   });
 });
