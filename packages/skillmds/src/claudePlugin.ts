@@ -159,3 +159,146 @@ function msg(e: unknown): string {
   }
   return e instanceof Error ? e.message.split(/\r?\n/)[0]! : String(e);
 }
+
+// ---------------------------------------------------------------------------
+// The same install, without the `claude` binary.
+//
+// Driving the official CLI is the sanctioned path, but it needs `claude` to be
+// on PATH of the shell that ran `npx`, and on plenty of machines it is not —
+// the app is installed, the CLI is not exported, and the user gets a pile of
+// loose skills with no idea why. That is the failure this exists to remove.
+//
+// A Claude Code plugin is not a secret format: it is a directory under
+// plugins/cache/<marketplace>/<plugin>/<version>/ plus three JSON records
+// saying it is there. We already build that exact directory server-side — it
+// is what /plugins/<owner>/<slug>/plugin.zip contains — so installing it is
+// unzip plus a careful merge. Careful is the operative word: these files
+// belong to Claude Code, so every write reads first, keeps every key it does
+// not own, and refuses outright if the existing file does not parse.
+// ---------------------------------------------------------------------------
+
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+export const SITE_URL = "https://skillmd.com";
+
+export interface NativeDeps {
+  fetch?: typeof fetch;
+  /** Overridden in tests; otherwise the same home the resolver uses. */
+  home?: string;
+}
+
+function readJson(path: string): Record<string, unknown> | "absent" | "unparsable" {
+  let text: string;
+  try { text = readFileSync(path, "utf8"); } catch { return "absent"; }
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : "unparsable";
+  } catch { return "unparsable"; }
+}
+
+function writeJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : {};
+
+/** Install the plugin by writing what Claude Code would have written. */
+export async function installPluginNatively(
+  owner: string,
+  slug: string,
+  deps: NativeDeps = {},
+): Promise<PluginInstallOutcome> {
+  const home = deps.home ?? (process.env.USERPROFILE || process.env.HOME || homedir());
+  const claudeDir = join(home, ".claude");
+  // No ~/.claude means no Claude Code, and inventing one would put a plugin
+  // where nothing reads it. The member skills are the honest answer there.
+  if (!existsSync(claudeDir)) return { ok: false, reason: "no Claude Code directory on this machine" };
+
+  const name = marketplacePluginName(owner, slug);
+  const qualified = `${name}@${MARKETPLACE_NAME}`;
+  const doFetch = deps.fetch ?? fetch;
+
+  let entries: Record<string, Uint8Array>;
+  try {
+    const res = await doFetch(`${SITE_URL}/plugins/${owner}/${slug}/plugin.zip`, { headers: { accept: "application/zip" } });
+    if (!res.ok) return { ok: false, reason: `the plugin archive answered ${res.status}` };
+    const { unzipSync } = await import("fflate");
+    entries = unzipSync(new Uint8Array(await res.arrayBuffer()));
+  } catch (e) {
+    return { ok: false, reason: msg(e) };
+  }
+
+  // The archive carries its own manifest; its version decides the cache path,
+  // exactly as it would if Claude Code had unpacked it.
+  let version = "1.0.0";
+  const manifest = entries[".claude-plugin/plugin.json"];
+  if (manifest) {
+    try {
+      const v = JSON.parse(new TextDecoder().decode(manifest)) as { version?: unknown };
+      if (typeof v.version === "string" && v.version) version = v.version;
+    } catch { /* keep the default rather than fail over a cosmetic field */ }
+  }
+  if (!manifest) return { ok: false, reason: "the plugin archive has no .claude-plugin/plugin.json" };
+
+  const pluginsDir = join(claudeDir, "plugins");
+  const installPath = join(pluginsDir, "cache", MARKETPLACE_NAME, name, version);
+  const knownPath = join(pluginsDir, "known_marketplaces.json");
+  const installedPath = join(pluginsDir, "installed_plugins.json");
+  const settingsPath = join(claudeDir, "settings.json");
+
+  // Read every record BEFORE writing anything: a file we cannot parse is a file
+  // we must not overwrite, and finding that out halfway leaves a half install.
+  const known = readJson(knownPath);
+  if (known === "unparsable") return { ok: false, reason: "known_marketplaces.json is not readable JSON — left untouched" };
+  const installed = readJson(installedPath);
+  if (installed === "unparsable") return { ok: false, reason: "installed_plugins.json is not readable JSON — left untouched" };
+  const settings = readJson(settingsPath);
+  if (settings === "unparsable") return { ok: false, reason: "settings.json is not readable JSON — left untouched" };
+
+  try {
+    for (const [path, data] of Object.entries(entries)) {
+      if (path.endsWith("/")) continue;
+      const dest = join(installPath, ...path.split("/"));
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, data);
+    }
+    writeFileSync(join(installPath, ".in_use"), "");
+    mkdirSync(join(pluginsDir, "marketplaces", MARKETPLACE_NAME), { recursive: true });
+
+    const now = new Date().toISOString();
+    const source = { source: "url", url: MARKETPLACE_URL };
+
+    const knownDoc = known === "absent" ? {} : known;
+    knownDoc[MARKETPLACE_NAME] = {
+      ...obj(knownDoc[MARKETPLACE_NAME]),
+      source,
+      installLocation: join(pluginsDir, "marketplaces", MARKETPLACE_NAME),
+      lastUpdated: now,
+    };
+    writeJson(knownPath, knownDoc);
+
+    const installedDoc = installed === "absent" ? { version: 2, plugins: {} } : installed;
+    const plugins = obj(installedDoc.plugins);
+    // One record per scope: reinstalling replaces the user-scope entry instead
+    // of stacking a second copy of the same plugin.
+    const prior = Array.isArray(plugins[qualified]) ? (plugins[qualified] as Record<string, unknown>[]) : [];
+    plugins[qualified] = [
+      ...prior.filter((p) => p?.scope !== "user"),
+      { scope: "user", installPath, version, installedAt: now, lastUpdated: now },
+    ];
+    installedDoc.plugins = plugins;
+    if (typeof installedDoc.version !== "number") installedDoc.version = 2;
+    writeJson(installedPath, installedDoc);
+
+    const settingsDoc = settings === "absent" ? {} : settings;
+    settingsDoc.extraKnownMarketplaces = { ...obj(settingsDoc.extraKnownMarketplaces), [MARKETPLACE_NAME]: { source } };
+    settingsDoc.enabledPlugins = { ...obj(settingsDoc.enabledPlugins), [qualified]: true };
+    writeJson(settingsPath, settingsDoc);
+  } catch (e) {
+    return { ok: false, reason: msg(e) };
+  }
+  return { ok: true, name: qualified, marketplace: MARKETPLACE_NAME };
+}

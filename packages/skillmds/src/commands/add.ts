@@ -12,7 +12,7 @@ import { agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
 import { installSkill } from "../installer.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
-import { claudeCliAvailable, installClaudePlugin, MARKETPLACE_NAME } from "../claudePlugin.js";
+import { claudeCliAvailable, installClaudePlugin, installPluginNatively, MARKETPLACE_NAME } from "../claudePlugin.js";
 import { detectHostAgent, isInteractive, nonInteractiveHint, realTerminal } from "../env.js";
 import type { Terminal } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
@@ -766,14 +766,20 @@ async function tryPluginInstall(arg: string, flags: AddFlags): Promise<ManagedAt
   // --agent/-s narrow what gets written and --mode copy asks for owned copies;
   // a managed plugin honours none of those, so those callers want the skills.
   if (flags.agent?.length || flags.skill?.length || flags.list || flags.mode === "copy") return null;
-  // No Claude Code on this machine is not a failure — there is nothing to
-  // manage the plugin, so the skills are the right answer and saying so would
-  // only be noise. A *failed* attempt is different: the user asked for a
-  // plugin, got a pile of skills, and deserves to know which step broke.
-  if (!(await claudeCliAvailable())) return null;
-
-  const res = await installClaudePlugin(spec.owner, spec.slug);
-  if (!res.ok) return { ok: false, reason: res.reason };
+  // Two ways in, because `claude` being on PATH is not the same question as
+  // Claude Code being installed: plenty of machines have the app and no
+  // exported binary, and that used to mean a silent pile of loose skills.
+  // The CLI is tried first (it is the sanctioned path and keeps Claude Code's
+  // own bookkeeping), then the same install written directly.
+  const viaCli = (await claudeCliAvailable()) ? await installClaudePlugin(spec.owner, spec.slug) : null;
+  const res = viaCli?.ok ? viaCli : await installPluginNatively(spec.owner, spec.slug, { home: flags.home });
+  if (!res.ok) {
+    // Neither route applies when there is no Claude Code at all — nothing can
+    // manage the plugin, so the skills are the right answer and a warning
+    // would be noise on every Cursor-only machine.
+    if (!viaCli && /no Claude Code directory/.test(res.reason)) return null;
+    return { ok: false, reason: viaCli && !viaCli.ok ? viaCli.reason : res.reason };
+  }
   return {
     ok: true,
     agent: "claude-code",

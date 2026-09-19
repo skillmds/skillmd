@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { installClaudePlugin, claudeCliAvailable, marketplacePluginName, resolveClaudeBin, MARKETPLACE_URL } from "./claudePlugin.js";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { installClaudePlugin, installPluginNatively, claudeCliAvailable, marketplacePluginName, resolveClaudeBin, MARKETPLACE_URL } from "./claudePlugin.js";
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -97,5 +97,89 @@ describe("locating the claude binary", () => {
     const empty = mkdtempSync(join(tmpdir(), "emptypath-"));
     mkdirSync(join(empty, "sub"), { recursive: true });
     expect(resolveClaudeBin({ PATH: join(empty, "sub"), HOME: empty, USERPROFILE: empty } as NodeJS.ProcessEnv)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The install that does not need `claude` on PATH. This is the path that turns
+// "the app is installed but the binary is not exported" from a silent pile of
+// loose skills into a real plugin.
+// ---------------------------------------------------------------------------
+describe("installing without the claude binary", () => {
+  const zip = (files: Record<string, string>) => {
+    const { zipSync, strToU8 } = require("fflate") as typeof import("fflate");
+    return zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])));
+  };
+  const serving = (bytes: Uint8Array, status = 200) =>
+    (async () => ({ ok: status === 200, status, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) })) as unknown as typeof fetch;
+
+  const archive = () => zip({
+    ".claude-plugin/plugin.json": JSON.stringify({ name: "design", version: "2.1.0" }),
+    "README.md": "# Design",
+    "skills/ads/SKILL.md": "---\nname: ads\n---\nbody",
+  });
+
+  function home(): string {
+    const d = mkdtempSync(join(tmpdir(), "skillmd-native-"));
+    mkdirSync(join(d, ".claude"), { recursive: true });
+    return d;
+  }
+
+  it("writes the plugin and the three records Claude Code reads", async () => {
+    const h = home();
+    const res = await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    expect(res).toEqual({ ok: true, name: "design@skillmd", marketplace: "skillmd" });
+    // The archive's own version decides the cache path, as it would if Claude
+    // Code had unpacked it.
+    const base = join(h, ".claude", "plugins", "cache", "skillmd", "design", "2.1.0");
+    expect(readFileSync(join(base, "skills", "ads", "SKILL.md"), "utf8")).toContain("name: ads");
+    const installed = JSON.parse(readFileSync(join(h, ".claude", "plugins", "installed_plugins.json"), "utf8"));
+    expect(installed.plugins["design@skillmd"][0]).toMatchObject({ scope: "user", version: "2.1.0", installPath: base });
+    const settings = JSON.parse(readFileSync(join(h, ".claude", "settings.json"), "utf8"));
+    expect(settings.enabledPlugins["design@skillmd"]).toBe(true);
+    expect(settings.extraKnownMarketplaces.skillmd.source.url).toBe(MARKETPLACE_URL);
+    expect(JSON.parse(readFileSync(join(h, ".claude", "plugins", "known_marketplaces.json"), "utf8")).skillmd.source.url).toBe(MARKETPLACE_URL);
+  });
+
+  it("keeps every setting it does not own", async () => {
+    const h = home();
+    writeFileSync(join(h, ".claude", "settings.json"), JSON.stringify({
+      model: "opus", enabledPlugins: { "other@elsewhere": true }, permissions: { allow: ["Bash"] },
+    }));
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    const s = JSON.parse(readFileSync(join(h, ".claude", "settings.json"), "utf8"));
+    // These files belong to Claude Code: an install must not cost the user
+    // their model, their permissions, or somebody else's plugin.
+    expect(s.model).toBe("opus");
+    expect(s.permissions.allow).toEqual(["Bash"]);
+    expect(s.enabledPlugins).toEqual({ "other@elsewhere": true, "design@skillmd": true });
+  });
+
+  it("refuses rather than overwrite a settings file it cannot parse", async () => {
+    const h = home();
+    writeFileSync(join(h, ".claude", "settings.json"), "{ this is not json");
+    const res = await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    expect(res.ok).toBe(false);
+    expect(readFileSync(join(h, ".claude", "settings.json"), "utf8")).toBe("{ this is not json");
+  });
+
+  it("replaces its own record instead of stacking copies", async () => {
+    const h = home();
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    const installed = JSON.parse(readFileSync(join(h, ".claude", "plugins", "installed_plugins.json"), "utf8"));
+    expect(installed.plugins["design@skillmd"]).toHaveLength(1);
+  });
+
+  it("does not invent a Claude Code install that is not there", async () => {
+    const h = mkdtempSync(join(tmpdir(), "skillmd-nohome-"));
+    const res = await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    expect(res.ok === false && res.reason).toMatch(/no Claude Code directory/);
+  });
+
+  it("namespaces a community plugin the same way the marketplace does", async () => {
+    const h = home();
+    const res = await installPluginNatively("younis", "cc", { home: h, fetch: serving(archive()) });
+    expect(res.ok === true && res.name).toBe("younis-cc@skillmd");
   });
 });

@@ -731,8 +731,13 @@ vi.mock("../claudePlugin.js", async (orig) => ({
   ...(await orig<typeof import("../claudePlugin.js")>()),
   claudeCliAvailable: async () => claudeStub.available,
   installClaudePlugin: async () => claudeStub.result,
+  // Stubbed alongside the CLI: the real one writes into ~/.claude and would
+  // reach the network, and these tests are about what runAdd does with the
+  // answer, not how the answer is produced.
+  installPluginNatively: async () => claudeStub.native ?? claudeStub.result,
 }));
-const claudeStub: { available: boolean; result: { ok: true; name: string; marketplace: string } | { ok: false; reason: string } } = {
+type Attempt = { ok: true; name: string; marketplace: string } | { ok: false; reason: string };
+const claudeStub: { available: boolean; result: Attempt; native?: Attempt } = {
   available: true,
   result: { ok: true, name: "design@skillmd", marketplace: "skillmd" },
 };
@@ -742,6 +747,7 @@ describe("plugin: sources install as Claude Code plugins", () => {
     const cwd = tmp();
     mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
     claudeStub.available = true;
+    claudeStub.native = undefined;
     claudeStub.result = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
     let resolved = 0;
     const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true }, {
@@ -762,6 +768,7 @@ describe("plugin: sources install as Claude Code plugins", () => {
     mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
     mkdirSync(join(cwd, ".cursor", "skills"), { recursive: true });
     claudeStub.available = true;
+    claudeStub.native = undefined;
     claudeStub.result = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
     const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
       depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
@@ -778,6 +785,7 @@ describe("plugin: sources install as Claude Code plugins", () => {
     const cwd = tmp();
     mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
     claudeStub.available = true;
+    claudeStub.native = { ok: false, reason: "the plugin archive answered 404" };
     claudeStub.result = { ok: false, reason: 'Plugin "design" not found in marketplace "skillmd"' };
     const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
       depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
@@ -791,11 +799,29 @@ describe("plugin: sources install as Claude Code plugins", () => {
     const cwd = tmp();
     mkdirSync(join(cwd, ".cursor", "skills"), { recursive: true });
     claudeStub.available = false;
+    claudeStub.native = { ok: false, reason: "no Claude Code directory on this machine" };
     const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true },
       depsReturning([{ name: "good", raw: GOOD, slug: "good" }]));
     // Not a failure — there is nothing to manage the plugin, so skills are the
     // right answer and a warning would be noise on every non-Claude machine.
     expect(stripAnsi(run.output)).not.toContain("could not install");
     expect(existsSync(join(cwd, ".cursor", "skills", "good"))).toBe(true);
+  });
+});
+
+describe("the two routes into a managed plugin", () => {
+  it("falls through to the direct install when claude is not on PATH", async () => {
+    const cwd = tmp();
+    mkdirSync(join(cwd, ".claude", "skills"), { recursive: true });
+    // The machine has Claude Code but no exported binary — the case that sent
+    // a real install down the loose-skills path with nothing said about why.
+    claudeStub.available = false;
+    claudeStub.native = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
+    const run = await runAdd("plugin:skillmd/design", { ...sameHome(cwd), yes: true, project: true }, {
+      resolve: async () => [], fireInstall: () => {},
+    });
+    expect(run.exitCode).toBe(0);
+    expect(stripAnsi(run.output)).toContain("design@skillmd");
+    claudeStub.native = undefined;
   });
 });
