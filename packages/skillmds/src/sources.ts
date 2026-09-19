@@ -8,10 +8,10 @@ import { join } from "node:path";
 export type SourceSpec =
   | { kind: "local"; path: string; display: string }
   | { kind: "slug"; owner: string; name: string; display: string }
-  // A registry collection — what the site calls a plugin. Note the repo's older
-  // sense of "pack": skills.type = 'pack' is a single multi-file skill and has
-  // nothing to do with this.
-  | { kind: "pack"; owner: string; slug: string; display: string }
+  // A registry collection — what the site calls a plugin. Distinct from the
+  // repo's other sense of "pack": skills.type = 'pack' is a single multi-file
+  // skill, which is why this is not called that.
+  | { kind: "plugin"; owner: string; slug: string; display: string }
   | { kind: "github"; owner: string; repo: string; ref?: string; subpath?: string; skill?: string; display: string }
   | { kind: "gist"; user: string; id: string; display: string };
 
@@ -47,12 +47,14 @@ export function parseSource(arg: string, opts: ParseOptions = {}): SourceSpec {
   // 1. registry plugin (collection). Ahead of the local check on purpose: the
   // prefix is explicit, so unlike a bare `owner/name` it must not be shadowed
   // by a directory that happens to share the name. A real path with this shape
-  // is still reachable as ./pack:...
-  if (/^pack:/i.test(a)) {
+  // is still reachable as ./plugin:...
+  // `pack:` is accepted as an alias because that is what the registry calls the
+  // underlying collection in its API paths.
+  if (/^(plugin|pack):/i.test(a)) {
     const body = a.slice(a.indexOf(":") + 1);
     const m = body.match(/^([^/#@\s]+)\/([^/#@\s]+)$/);
-    if (!m) throw new Error(`"${a}" is not a valid plugin source — expected pack:owner/slug`);
-    return { kind: "pack", owner: m[1]!, slug: m[2]!, display: a };
+    if (!m) throw new Error(`"${a}" is not a valid plugin source — expected plugin:owner/slug`);
+    return { kind: "plugin", owner: m[1]!, slug: m[2]!, display: a };
   }
 
   // 2. local paths
@@ -113,7 +115,7 @@ export function sourceId(spec: SourceSpec): string {
     case "slug": return `registry:${spec.owner}/${spec.name}`;
     // Members are recorded under their own registry slug, not this one — the
     // lock file tracks what was written, and a plugin is only how they arrived.
-    case "pack": return `pack:${spec.owner}/${spec.slug}`;
+    case "plugin": return `plugin:${spec.owner}/${spec.slug}`;
     case "github": return `github:${spec.owner}/${spec.repo}${spec.subpath ? `/${spec.subpath}` : ""}${spec.ref ? `#${spec.ref}` : ""}${spec.skill ? `@${spec.skill}` : ""}`;
     case "gist": return `gist:${spec.user}/${spec.id}`;
     case "local": return `local:${spec.path}`;

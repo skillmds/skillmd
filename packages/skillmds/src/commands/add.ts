@@ -12,6 +12,7 @@ import { agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
 import { installSkill } from "../installer.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
+import { claudeCliAvailable, installClaudePlugin, MARKETPLACE_NAME } from "../claudePlugin.js";
 import { detectHostAgent, isInteractive, nonInteractiveHint, realTerminal } from "../env.js";
 import type { Terminal } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
@@ -331,7 +332,7 @@ function makeDefaultDeps(flags: AddFlags): AddDeps {
       // A plugin expands to its members. Each becomes an ordinary candidate, so
       // scope, agent targeting, linting and the lock file all behave exactly as
       // they do for a single skill — this returns many rather than one.
-      if (spec.kind === "pack") {
+      if (spec.kind === "plugin") {
         const { api, base: apiBase, token, fetch: doFetch } = createClient(f);
         const { name: packName, members } = await fetchPackMembers(api, spec.owner, spec.slug);
         if (!members.length) throw new Error(`plugin ${spec.owner}/${spec.slug} has no installable skills`);
@@ -737,9 +738,45 @@ async function installOne(c: AddCandidate, ctx: InstallContext): Promise<Candida
   };
 }
 
+/** A plugin installs as a plugin when Claude Code can manage it.
+ *
+ *  Expanding it into member skills is the fallback, not the goal: loose skills
+ *  carry no record that they arrived together, so `/plugin` cannot list them
+ *  and removing the set means removing each one. Driving `claude plugin` gives
+ *  the real thing — one entry, one version, enable/disable/uninstall as a unit.
+ *
+ *  Returns null whenever that is not possible (no `claude` on PATH, a community
+ *  plugin the marketplace does not list), and the caller falls back. */
+async function tryPluginInstall(arg: string, flags: AddFlags): Promise<AddResult | null> {
+  let spec;
+  try { spec = parseSource(arg, { ref: flags.ref }); } catch { return null; }
+  if (spec.kind !== "plugin") return null;
+  // --agent/-s narrow what gets written, and a managed plugin honours neither;
+  // a caller asking for that wants the skill-level install.
+  if (flags.agent?.length || flags.skill?.length || flags.list || flags.mode === "copy") return null;
+  if (!(await claudeCliAvailable())) return null;
+
+  const res = await installClaudePlugin(spec.slug);
+  if (!res.ok) return null; // fall back to installing the members as skills
+  const text = `installed ${res.name} as a Claude Code plugin — manage it with \`claude plugin\` or /plugin`;
+  return finish(flags, {
+    kind: "install",
+    scope: "global",
+    records: [],
+    notices: [infoNotice(text)],
+    paths: { home: flags.home ?? homedir(), cwd: flags.cwd ?? process.cwd() },
+  });
+}
+
 export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Promise<AddResult> {
   const d = deps ?? makeDefaultDeps(flags);
   const env = flags.env ?? process.env;
+
+  // Unconditional: runAddWithUI always supplies deps, so gating this on "no
+  // deps" would mean the plugin manager never ran outside a bare runAdd() call.
+  // Anything that is not a plugin: source returns before a process is spawned.
+  const managed = await tryPluginInstall(arg, flags);
+  if (managed) return managed;
 
   let candidates: AddCandidate[];
   try {

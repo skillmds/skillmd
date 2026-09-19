@@ -129,7 +129,7 @@ export async function resolveSource(arg: string, opts: RemoteOptions = {}): Prom
   // A plugin has no single tree to fetch: add.ts expands it into its member
   // slugs and resolves each one through the registry before anything lands
   // here. Reaching this point means a caller skipped that expansion.
-  if (spec.kind === "pack") {
+  if (spec.kind === "plugin") {
     throw new Error(`"${spec.display}" is a plugin, not a single skill — install it with \`skillmd add ${spec.display}\`.`);
   }
   const gh = asGithub(spec);
