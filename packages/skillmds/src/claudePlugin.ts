@@ -65,6 +65,7 @@ const needsShell = (bin: string) => /\.(cmd|bat)$/i.test(bin);
  *  told the site's address by a caller that might pass a preview origin. */
 export const MARKETPLACE_URL = "https://skillmd.com/.claude-plugin/marketplace.json";
 export const MARKETPLACE_NAME = "skillmd";
+const MARKETPLACE_SCHEMA = "https://anthropic.com/claude-code/marketplace.schema.json";
 
 export interface ClaudePluginDeps {
   /** Injected in tests. Resolves with the command's output, rejects if it cannot run. */
@@ -266,19 +267,46 @@ export async function installPluginNatively(
       writeFileSync(dest, data);
     }
     writeFileSync(join(installPath, ".in_use"), "");
-    mkdirSync(join(pluginsDir, "marketplaces", MARKETPLACE_NAME), { recursive: true });
 
     const now = new Date().toISOString();
     const source = { source: "url", url: MARKETPLACE_URL };
 
+    // Claude Code resolves an installed plugin through its marketplace, and a
+    // declaration alone is not enough: with the cache directory empty it
+    // reports "Marketplace skillmd failed to load: cache-miss" and the plugin
+    // sits in the list as failed. The manifest that would have been fetched
+    // therefore gets written too — merged, so a second install does not erase
+    // the first one's entry.
+    const marketplaceDir = join(pluginsDir, "marketplaces", MARKETPLACE_NAME);
+    const cachedPath = join(marketplaceDir, ".claude-plugin", "marketplace.json");
+    const cached = readJson(cachedPath);
+    if (cached === "unparsable") return { ok: false, reason: "the cached marketplace manifest is not readable JSON — left untouched" };
+    const cachedDoc = cached === "absent"
+      ? { $schema: MARKETPLACE_SCHEMA, name: MARKETPLACE_NAME, owner: { name: "SkillMD", email: "hi@skillmd.com" },
+          description: "Agent Skill plugins from the SkillMD registry.", plugins: [] as Record<string, unknown>[] }
+      : cached;
+    const list = Array.isArray(cachedDoc.plugins) ? (cachedDoc.plugins as Record<string, unknown>[]) : [];
+    cachedDoc.plugins = [
+      ...list.filter((e) => e?.name !== name),
+      {
+        name,
+        version,
+        homepage: `${SITE_URL}/plugins/${owner}/${slug}`,
+        author: { name: owner === "skillmd" ? "SkillMD" : `@${owner}` },
+        source: { source: "archive", url: `${SITE_URL}/plugins/${owner}/${slug}/plugin.zip` },
+      },
+    ];
+    writeJson(cachedPath, cachedDoc);
+
+    // A declaration already on disk is left exactly as it is. Claude Code
+    // refuses to add a marketplace whose source differs from the declared one,
+    // so overwriting somebody's repo-sourced `skillmd` with our URL is how you
+    // break their Plugins tab from a CLI install.
     const knownDoc = known === "absent" ? {} : known;
-    knownDoc[MARKETPLACE_NAME] = {
-      ...obj(knownDoc[MARKETPLACE_NAME]),
-      source,
-      installLocation: join(pluginsDir, "marketplaces", MARKETPLACE_NAME),
-      lastUpdated: now,
-    };
-    writeJson(knownPath, knownDoc);
+    if (!knownDoc[MARKETPLACE_NAME]) {
+      knownDoc[MARKETPLACE_NAME] = { source, installLocation: marketplaceDir, lastUpdated: now };
+      writeJson(knownPath, knownDoc);
+    }
 
     const installedDoc = installed === "absent" ? { version: 2, plugins: {} } : installed;
     const plugins = obj(installedDoc.plugins);
@@ -294,7 +322,9 @@ export async function installPluginNatively(
     writeJson(installedPath, installedDoc);
 
     const settingsDoc = settings === "absent" ? {} : settings;
-    settingsDoc.extraKnownMarketplaces = { ...obj(settingsDoc.extraKnownMarketplaces), [MARKETPLACE_NAME]: { source } };
+    const declared = obj(settingsDoc.extraKnownMarketplaces);
+    if (!declared[MARKETPLACE_NAME]) declared[MARKETPLACE_NAME] = { source };
+    settingsDoc.extraKnownMarketplaces = declared;
     settingsDoc.enabledPlugins = { ...obj(settingsDoc.enabledPlugins), [qualified]: true };
     writeJson(settingsPath, settingsDoc);
   } catch (e) {

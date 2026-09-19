@@ -141,6 +141,43 @@ describe("installing without the claude binary", () => {
     expect(JSON.parse(readFileSync(join(h, ".claude", "plugins", "known_marketplaces.json"), "utf8")).skillmd.source.url).toBe(MARKETPLACE_URL);
   });
 
+  it("writes the marketplace manifest the plugin is resolved through", async () => {
+    const h = home();
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    // Without this file Claude Code lists the plugin as "failed to load:
+    // cache-miss" — the records alone are not enough, it resolves an installed
+    // plugin through its marketplace.
+    const cached = JSON.parse(readFileSync(
+      join(h, ".claude", "plugins", "marketplaces", "skillmd", ".claude-plugin", "marketplace.json"), "utf8"));
+    expect(cached.name).toBe("skillmd");
+    expect(cached.plugins.map((p: { name: string }) => p.name)).toEqual(["design"]);
+  });
+
+  it("keeps the entry an earlier install wrote", async () => {
+    const h = home();
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    await installPluginNatively("younis", "cc", { home: h, fetch: serving(archive()) });
+    const cached = JSON.parse(readFileSync(
+      join(h, ".claude", "plugins", "marketplaces", "skillmd", ".claude-plugin", "marketplace.json"), "utf8"));
+    expect(cached.plugins.map((p: { name: string }) => p.name).sort()).toEqual(["design", "younis-cc"]);
+  });
+
+  it("leaves a marketplace someone else declared alone", async () => {
+    const h = home();
+    const repoSource = { source: "github", repo: "skillmds/skillmd" };
+    writeFileSync(join(h, ".claude", "settings.json"), JSON.stringify({ extraKnownMarketplaces: { skillmd: { source: repoSource } } }));
+    mkdirSync(join(h, ".claude", "plugins"), { recursive: true });
+    writeFileSync(join(h, ".claude", "plugins", "known_marketplaces.json"), JSON.stringify({ skillmd: { source: repoSource } }));
+    await installPluginNatively("skillmd", "design", { home: h, fetch: serving(archive()) });
+    // Claude Code refuses to add a marketplace whose source differs from the
+    // declared one. Rewriting theirs from here is how a CLI install breaks
+    // their Plugins tab.
+    const s = JSON.parse(readFileSync(join(h, ".claude", "settings.json"), "utf8"));
+    expect(s.extraKnownMarketplaces.skillmd.source).toEqual(repoSource);
+    expect(JSON.parse(readFileSync(join(h, ".claude", "plugins", "known_marketplaces.json"), "utf8")).skillmd.source).toEqual(repoSource);
+    expect(s.enabledPlugins["design@skillmd"]).toBe(true);
+  });
+
   it("keeps every setting it does not own", async () => {
     const h = home();
     writeFileSync(join(h, ".claude", "settings.json"), JSON.stringify({
