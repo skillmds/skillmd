@@ -8,7 +8,6 @@ metadata:
     category: weather
 ---
 
-
 # Weather Plugin Usage Guide
 
 You have 12 weather tools. Prefer lightweight data tools and only use images when asked.

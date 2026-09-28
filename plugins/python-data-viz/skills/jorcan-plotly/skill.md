@@ -6,7 +6,6 @@ metadata:
     skill-author: K-Dense Inc.
 ---
 
-
 # Plotly
 
 Python graphing library for creating interactive, publication-quality visualizations with 40+ chart types.
