@@ -47,7 +47,7 @@ export async function startMcpServer(): Promise<void> {
       version: VERSION,
       title: "SkillMD",
       description:
-        "The open registry of Agent Skills: search, inspect, lint and install 25,000+ linted, security-reviewed SKILL.md files for Claude Code, Cursor, Codex and 60+ other agents.",
+        "The open registry of Agent Skills: search, inspect, lint and install 1,000,000+ linted, security-reviewed SKILL.md files for Claude Code, Cursor, Codex and 60+ other agents.",
       websiteUrl: "https://skillmd.com",
       icons: [
         { src: "https://skillmd.com/favicon.png", mimeType: "image/png", sizes: ["512x512"] },
