@@ -34,7 +34,7 @@
 
 An **Agent Skill** is a folder with a `SKILL.md` file: YAML frontmatter (`name`, `description`) plus Markdown instructions an agent loads on demand. Claude Code, Cursor, Codex, Gemini CLI, GitHub Copilot, Windsurf and dozens of other agents read the same format, which is what makes a shared registry worth having. If the format is new to you, start with [What is an Agent Skill?](https://skillmd.com/docs/what-is-an-agent-skill) and [the anatomy of a SKILL.md file](https://skillmd.com/blog/anatomy-of-a-skill-md-file).
 
-**[skillmd.com](https://skillmd.com)** is the open registry of those skills: **25,000+ skills from 470+ publishers**, every one of them linted against the format, security-scanned for what it can do, and pinned to a commit. Verdicts, capability flags and independent scanner results sit on every skill page. Installing writes files and does nothing else.
+**[skillmd.com](https://skillmd.com)** is the open registry of those skills: **1,000,000+ skills from 30,000+ publishers**, every one of them linted against the format, security-scanned for what it can do, and pinned to a commit. Verdicts, capability flags and independent scanner results sit on every skill page. Installing writes files and does nothing else.
 
 This repository is everything that runs on your machine or in your CI, MIT-licensed:
 
