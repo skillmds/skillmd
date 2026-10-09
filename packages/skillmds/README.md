@@ -186,7 +186,7 @@ No auth required. It exposes `skillmd_search`, `skillmd_get`, `skillmd_download`
 
 ## Find skills on skillmd.com
 
-The registry behind these tools is [skillmd.com](https://skillmd.com): 25,000+ Agent Skills, each linted, security-scanned and content-pinned.
+The registry behind these tools is [skillmd.com](https://skillmd.com): 1,000,000+ Agent Skills, each linted, security-scanned and content-pinned.
 
 - [Search all skills](https://skillmd.com/search) · [browse by category](https://skillmd.com/categories) · [by publisher](https://skillmd.com/publishers)
 - Install guides per agent: [Claude Code](https://skillmd.com/agents/claude-code) · [Cursor](https://skillmd.com/agents/cursor) · [Codex](https://skillmd.com/agents/codex) · [all 60+ agents](https://skillmd.com/agents)
