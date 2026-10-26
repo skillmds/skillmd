@@ -21,6 +21,12 @@ describe("parseSkillMd", () => {
 
 describe("slugify", () => {
   it("normalizes", () => expect(slugify("Hello World!")).toBe("hello-world"));
+  // The 60-char cut used to land right after a word break, leaving
+  // "...-reading-": a skill name the Agent Skills spec rejects.
+  it("never ends in a hyphen after the length cut", () => {
+    expect(slugify(`${"a".repeat(59)} bcd`)).toBe("a".repeat(59));
+    expect(slugify("Lectura rápida comprensiva y vaciado de información (reading skill)")).not.toMatch(/-$/);
+  });
   it("falls back to 'skill' for empty input", () => expect(slugify("!!!")).toBe("skill"));
 });
 

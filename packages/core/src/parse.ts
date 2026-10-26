@@ -17,7 +17,7 @@ export const MAX_DESCRIPTION = 1024;
 export const MAX_NAME = 120;
 
 export const slugify = (s: string): string =>
-  String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "skill";
+  String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "") || "skill";
 
 export function parseSkillMd(raw: string, type: "single" | "pack" = "single"): ParseResult {
   if (!raw || raw.length > MAX_SKILL_BYTES) return { error: "SKILL.md missing or too large (max 256KB)" };

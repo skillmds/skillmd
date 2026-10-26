@@ -2,6 +2,10 @@
 
 All notable changes to `@skillmds/core` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.0.1
+
+- `slugify` no longer ends in a hyphen when the 60-character cut lands right after a word break (`"…-informacion-reading-"` → `"…-informacion-reading"`). A slug's name becomes the installed folder and the skill's `name`, and the Agent Skills spec rejects a name ending in a hyphen.
+
 ## 1.0.0
 
 - Published under the `@skillmds` scope (matching the `skillmds` package and the github.com/skillmds org). Earlier docs referred to it as `@skillmd/core`; that name was never published.
