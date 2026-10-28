@@ -825,3 +825,29 @@ describe("the two routes into a managed plugin", () => {
     claudeStub.native = undefined;
   });
 });
+
+// One registry companion link that its repo no longer serves used to fail the
+// whole bundle; `add owner/name` then fetched the slug as a GitHub repo and
+// failed with a 404 (reproduced on skillmds 1.3.3 with
+// mouadja02/openrouter-models). It now installs the rest and says what is gone.
+describe("registryCandidate with a companion gone upstream", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("installs the other files and names the missing one", async () => {
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/bundle")) {
+        return new Response(JSON.stringify({ files: [
+          { path: "SKILL.md", content_base64: Buffer.from("---\nname: p\ndescription: d\n---\n# p\n").toString("base64"), storage: "inline" },
+          { path: "scripts/gone.ts", source_url: "https://raw.githubusercontent.com/o/r/main/scripts/gone.ts" },
+          { path: "README.md", source_url: "https://raw.githubusercontent.com/o/r/main/README.md" },
+        ] }), { status: 200 });
+      }
+      return u.includes("gone") ? new Response("404: Not Found", { status: 404 }) : new Response("# readme", { status: 200 });
+    });
+    const { registryCandidate } = await import("./add.js");
+    const api = (async () => ({ slug: "o/p", title: "p", description: "d", type: "pack" })) as never;
+    const c = await registryCandidate("o", "p", "registry:o/p", { api, base: "https://api.test", token: undefined });
+    expect(c.files?.map((f) => f.path)).toEqual(["SKILL.md", "README.md"]);
+    expect(c.note).toMatch(/1 companion file is gone from the source repo and was not installed \(scripts\/gone\.ts\)/);
+  });
+});

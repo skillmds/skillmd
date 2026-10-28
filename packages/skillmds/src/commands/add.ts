@@ -4,7 +4,7 @@ import * as p from "@clack/prompts";
 import { dirname, join, resolve } from "node:path";
 import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
-import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError } from "../api.js";
+import { createClient, skillMdFor, fetchBundle, IntegrityError, RegistryError, missingFilesNote } from "../api.js";
 import type { Client, RegistrySkill } from "../api.js";
 import { collectFiles, resolvePackFiles, resolveSource } from "../source.js";
 import { looksLikeProject } from "../project.js";
@@ -153,6 +153,14 @@ export function unverifiedFilesNote(n: number): string {
   return `${n} companion ${f} came straight from the source repo — the registry holds no checksum for ${it}, so only the connection was verified`;
 }
 
+/** What to tell the user about a bundle: unverified links, files gone upstream. */
+function bundleNote(bundle: { unverified?: boolean }[], missing: string[]): string | undefined {
+  const unverified = bundle.filter((file) => file.unverified).length;
+  const notes = [unverified ? unverifiedFilesNote(unverified) : "", missing.length ? missingFilesNote(missing) : ""].filter(Boolean);
+  return notes.length ? notes.join("; ") : undefined;
+}
+
+
 /** Caveat attached when a registry slug ends up installed from GitHub only
  *  because the registry itself couldn't be reached. */
 export function registryFallbackNote(host: string): string {
@@ -219,15 +227,16 @@ export async function registryCandidate(
   if (skill.type === "pack") {
     // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
     // upstream deletion/force-push. Fall back to a live GitHub fetch.
-    const bundle = await fetchBundle(client.base, registrySlug, client.token);
+    const missing: string[] = [];
+    const bundle = await fetchBundle(client.base, registrySlug, client.token, { missing });
     if (bundle && bundle.length) {
       const sk = bundle.find((file) => file.path === "SKILL.md");
-      const unverified = bundle.filter((file) => file.unverified).length;
+      const note = bundleNote(bundle, missing);
       return {
         ...meta,
         raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
         files: bundle,
-        ...(unverified ? { note: unverifiedFilesNote(unverified) } : {}),
+        ...(note ? { note } : {}),
       };
     }
     const pack = await resolvePackFiles(skill);
@@ -363,13 +372,14 @@ function makeDefaultDeps(flags: AddFlags): AddDeps {
             for (let i = n++; i < multi.length; i = n++) {
               const c = multi[i]!;
               try {
-                const bundle = await fetchBundle(apiBase, c.registrySlug!, token);
+                const missing: string[] = [];
+                const bundle = await fetchBundle(apiBase, c.registrySlug!, token, { missing });
                 if (!bundle?.length) continue;
                 const sk = bundle.find((file) => file.path === "SKILL.md");
-                const unverified = bundle.filter((file) => file.unverified).length;
+                const note = bundleNote(bundle, missing);
                 c.files = bundle;
                 if (sk) c.raw = sk.contents.toString("utf8");
-                if (unverified) c.note = unverifiedFilesNote(unverified);
+                if (note) c.note = note;
               } catch {
                 // Leave it as SKILL.md-only; installSkill already warns that a
                 // pack arrived without its assets.

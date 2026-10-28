@@ -90,7 +90,15 @@ export interface BundleFile {
   unverified?: boolean;
 }
 
-export interface BundleOptions { fetch?: typeof fetch; timeoutMs?: number }
+export interface BundleOptions {
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+  /** When given, a companion the registry only links to and the source repo
+   *  no longer serves is skipped and its path pushed here, and the rest of the
+   *  bundle still installs. Without it such a file fails the whole fetch, which
+   *  is what an update wants: never replace a full install with a partial one. */
+  missing?: string[];
+}
 
 /** Fetch a pack's full file set from the registry bundle.
  *
@@ -129,7 +137,14 @@ export async function fetchBundle(base: string, slug: string, token?: string, op
       contents = Buffer.from(f.content_base64, "base64");
     } else if (f.source_url && isAllowedSourceUrl(f.source_url)) {
       const r = await doFetch(f.source_url).catch(() => null);
-      if (!r || !r.ok) throw new Error(`could not fetch companion file "${f.path}" from ${hostOf(f.source_url)}`);
+      if (!r || !r.ok) {
+        // Moved or deleted upstream. One such link used to fail the whole
+        // bundle, and `add owner/name` then fell back to fetching the registry
+        // slug as a GitHub repo, which does not exist: the install failed with
+        // a misleading 404 instead of installing everything else.
+        if (opts.missing) { opts.missing.push(f.path); continue; }
+        throw new Error(`could not fetch companion file "${f.path}" from ${hostOf(f.source_url)}`);
+      }
       contents = Buffer.from(await r.arrayBuffer());
       fromUrl = true;
     } else {
@@ -148,6 +163,14 @@ export async function fetchBundle(base: string, slug: string, token?: string, op
     out.push({ path: f.path, contents, ...(fromUrl && !f.sha256 ? { unverified: true } : {}) });
   }
   return out;
+}
+
+/** Companion files the registry links to but the source repo no longer serves. */
+export function missingFilesNote(paths: string[]): string {
+  const n = paths.length;
+  const shown = paths.slice(0, 5).join(", ") + (n > 5 ? `, and ${n - 5} more` : "");
+  const [f, was, it] = n === 1 ? ["file is", "was", "it"] : ["files are", "were", "them"];
+  return `${n} companion ${f} gone from the source repo and ${was} not installed (${shown}); the skill may still refer to ${it}`;
 }
 
 // Mirrors the JSON returned by GET /api/skills/:owner/:name.

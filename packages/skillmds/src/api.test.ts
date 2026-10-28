@@ -209,6 +209,24 @@ describe("fetchBundle hard integrity + caps", () => {
       : new Response("TAMPERED", { status: 200 });
     await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toBeInstanceOf(IntegrityError);
   });
+  // 287k registry companions are links to files their repos have since
+  // deleted or moved. One of them used to fail the whole bundle.
+  it("skips a linked file the source repo no longer serves and reports it, when asked to", async () => {
+    const f: FetchLike = async (url) => {
+      if (String(url).includes("/bundle")) return jsonResponse({ files: [
+        { path: "SKILL.md", content_base64: Buffer.from("# s").toString("base64"), sha256: sha("# s") },
+        { path: "references/gone.md", source_url: "https://raw.githubusercontent.com/o/r/main/references/gone.md" },
+        { path: "references/kept.md", source_url: "https://raw.githubusercontent.com/o/r/main/references/kept.md" },
+      ] });
+      return String(url).includes("gone") ? new Response("404: Not Found", { status: 404 }) : new Response("KEPT", { status: 200 });
+    };
+    const missing: string[] = [];
+    const out = await fetchBundle("https://api.test", "o/n", undefined, { fetch: f, missing });
+    expect(out?.map((x) => x.path)).toEqual(["SKILL.md", "references/kept.md"]);
+    expect(missing).toEqual(["references/gone.md"]);
+    // Without a list to report into (an update), the fetch still fails as a whole.
+    await expect(fetchBundle("https://api.test", "o/n", undefined, { fetch: f })).rejects.toThrow(/gone\.md/);
+  });
   it("accepts a bundle whose url-delivered file matches its hash", async () => {
     const f: FetchLike = async (url) => String(url).includes("/bundle")
       ? jsonResponse({ files: [{ path: "ref.md", source_url: "https://raw.githubusercontent.com/o/r/abc/ref.md", sha256: sha("REF") }] })

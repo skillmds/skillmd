@@ -4,7 +4,7 @@
 // agent-driven install and a human-driven one produce identical trees.
 import { resolve } from "node:path";
 import { lint, skillMdFor } from "@skillmds/core";
-import { fetchBundle, IntegrityError } from "../api.js";
+import { fetchBundle, IntegrityError, missingFilesNote } from "../api.js";
 import type { RegistrySkill } from "../api.js";
 import { AGENTS, agentDir, canonicalDir, detectAgents } from "../agents.js";
 import { looksLikeProject } from "../project.js";
@@ -131,9 +131,11 @@ export async function installFromRegistry(args: Record<string, unknown>, ctx: To
   let note = "";
   if (skill.type === "pack") {
     try {
-      const bundle = await getBundle(ctx.base, `${owner}/${name}`, ctx.token);
+      const missing: string[] = [];
+      const bundle = await getBundle(ctx.base, `${owner}/${name}`, ctx.token, { missing });
       if (bundle?.length) {
         files = bundle.some((f) => f.path === "SKILL.md") ? bundle : [...bundle, { path: "SKILL.md", contents: raw }];
+        if (missing.length) note = missingFilesNote(missing);
       } else {
         const pack = await getPackFiles(skill);
         if (pack) {

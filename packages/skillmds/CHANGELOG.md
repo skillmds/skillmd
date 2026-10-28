@@ -2,6 +2,10 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.3.4
+
+- **A companion file that its source repo no longer serves no longer fails the install.** When a registry pack links to a file the upstream repo has since deleted or moved, `add` (and the MCP install tool) now installs everything else and warns which files are missing, e.g. `1 companion file is gone from the source repo and was not installed (scripts/gone.ts)`. Before, one such link failed the whole bundle and `add owner/name` fell back to fetching the slug as a GitHub repo, ending in a misleading 404 with nothing installed. `update` stays strict: it never replaces a full install with a partial one.
+
 ## 1.2.0
 
 `skillmd add` was rewritten. It no longer copies a skill into every agent folder it can find: it writes **one canonical copy** and links that copy into the agents you chose, in the scope you chose, and records what it did in a lock file.
