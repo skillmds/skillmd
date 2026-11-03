@@ -86,8 +86,10 @@ export interface AddDeps {
    * (tests, non-interactive callers) → scope is auto-detected instead.
    */
   promptScope?: (ctx: { cwd: string; suggestGlobal: boolean }) => Promise<boolean | null>;
-  /** Let the user narrow the detected agents. null = cancelled. Absent → all detected. */
-  promptAgents?: (ctx: { detected: string[]; dirFor: (id: string) => string }) => Promise<string[] | null>;
+  /** Let the user narrow the detected agents. null = cancelled. Absent → all detected.
+   *  `managed` names the plugin Claude Code already received, which is why
+   *  Claude Code is missing from `detected`. */
+  promptAgents?: (ctx: { detected: string[]; dirFor: (id: string) => string; managed?: string }) => Promise<string[] | null>;
   /** Test hook: a prompt is required but cannot be shown. Overrides defaultNeedsPrompt(). */
   needsPrompt?: boolean;
 }
@@ -130,13 +132,22 @@ async function promptScopeInteractive(ctx: { cwd: string; suggestGlobal: boolean
   return p.isCancel(choice) ? null : (choice as boolean);
 }
 
-async function promptAgentsInteractive(ctx: { detected: string[]; dirFor: (id: string) => string }): Promise<string[] | null> {
+/** The picker's question. After a managed plugin install Claude Code is left
+ *  out of the list, and without saying why that read as "Claude Code was not
+ *  detected" (the confirmation only printed once the run had finished). */
+export function agentsPromptMessage(managed?: string): string {
+  return managed
+    ? `Claude Code already has ${managed} as a plugin. Which other agents should get its skills too?`
+    : "Which agents do you want to install to?";
+}
+
+async function promptAgentsInteractive(ctx: { detected: string[]; dirFor: (id: string) => string; managed?: string }): Promise<string[] | null> {
   if (ctx.detected.length < 2) return ctx.detected;
   // Most people install to the same agents every time — pre-select last run's
   // pick (minus any agent that is no longer detected) instead of everything.
   const remembered = (readConfig().lastAgents ?? []).filter((id) => ctx.detected.includes(id));
   const picked = await p.multiselect({
-    message: "Which agents do you want to install to?",
+    message: agentsPromptMessage(ctx.managed),
     options: ctx.detected.map((id) => ({ value: id, label: id, hint: ctx.dirFor(id) })),
     initialValues: remembered.length ? remembered : ctx.detected,
     required: true,
@@ -647,6 +658,7 @@ async function chooseTargets(
   deps: AddDeps,
   scope: Scope,
   detected: string[],
+  managed?: string,
 ): Promise<{ targets: string[]; notices: Notice[] } | null> {
   const notices: Notice[] = [];
   let targets = flags.agent?.length ? flags.agent : (detected.length ? detected : ["claude-code"]);
@@ -661,7 +673,7 @@ async function chooseTargets(
     targets = kept;
   }
   if (!flags.agent?.length && deps.promptAgents && !flags.yes && !flags.json && !detectHostAgent(flags.env ?? process.env)) {
-    const picked = await deps.promptAgents({ detected: targets, dirFor: (id) => agentDir(id, scope) });
+    const picked = await deps.promptAgents({ detected: targets, dirFor: (id) => agentDir(id, scope), ...(managed ? { managed } : {}) });
     if (picked === null) return null;
     targets = picked;
     // Remember the pick for next time — but never from a test run, which points
@@ -868,7 +880,7 @@ export async function runAdd(arg: string, flags: AddFlags, deps?: AddDeps): Prom
   // leaving a Cursor or Windsurf user with nothing — and stops Claude Code
   // from getting the same plugin twice, once managed and once as loose skills.
   const detected = detectAgents(scope).filter((id) => id !== managed?.agent);
-  const chosen = await chooseTargets(flags, d, scope, detected);
+  const chosen = await chooseTargets(flags, d, scope, detected, managed?.name);
   if (!chosen) return finish(flags, { kind: "cancel" });
   notices.push(...chosen.notices);
 

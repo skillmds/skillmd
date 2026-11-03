@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAdd, runAddWithUI, addCommand, addFlags, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError, fetchPackMembers, packDirNames, fetchPackArchive } from "./add.js";
+import { runAdd, runAddWithUI, addCommand, addFlags, agentsPromptMessage, argWithRef, looksLikeProject, resolvePackFiles, registryFallbackNote, registryUnreachableError, fetchPackMembers, packDirNames, fetchPackArchive } from "./add.js";
 import type { AddCandidate, AddDeps, AddFlags, AddUI } from "./add.js";
 import { IntegrityError, RegistryError } from "../api.js";
 import { readLock } from "../lock.js";
@@ -779,6 +779,30 @@ describe("plugin: sources install as Claude Code plugins", () => {
     // once as a loose skill.
     expect(existsSync(join(cwd, ".claude", "skills", "good"))).toBe(false);
     expect(out).toContain("design@skillmd");
+  });
+
+  it("tells the agent picker that Claude Code already has the plugin", async () => {
+    const home = tmp();
+    mkdirSync(join(home, ".claude"));
+    mkdirSync(join(home, ".cursor"));
+    mkdirSync(join(home, ".codeium", "windsurf"), { recursive: true });
+    claudeStub.available = true;
+    claudeStub.native = undefined;
+    claudeStub.result = { ok: true, name: "design@skillmd", marketplace: "skillmd" };
+    let asked: { detected: string[]; managed?: string } | undefined;
+    const deps: AddDeps = {
+      ...depsReturning([{ name: "good", raw: GOOD, slug: "good" }]),
+      promptAgents: async (ctx) => { asked = ctx; return ctx.detected; },
+    };
+    await runAdd("plugin:skillmd/design", { cwd: tmp(), home, global: true, env: {} }, deps);
+    // Claude Code is left out of the list on purpose — and the picker is told
+    // why, so the list no longer reads as "Claude Code was not detected".
+    expect(asked?.detected).not.toContain("claude-code");
+    expect(asked?.managed).toBe("design@skillmd");
+    expect(agentsPromptMessage(asked?.managed)).toBe(
+      "Claude Code already has design@skillmd as a plugin. Which other agents should get its skills too?",
+    );
+    expect(agentsPromptMessage()).toBe("Which agents do you want to install to?");
   });
 
   it("says why it fell back instead of silently dumping skills", async () => {

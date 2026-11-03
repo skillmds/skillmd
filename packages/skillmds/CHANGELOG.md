@@ -2,6 +2,10 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.3.5
+
+- **The agent picker now says why Claude Code isn't in it.** `add plugin:owner/slug` installs the plugin into Claude Code as a real plugin first, then asks which other agents should get its skills, leaving Claude Code out so it doesn't get the same skills twice. The question read "Which agents do you want to install to?", and the confirmation only printed after the run, so the list looked as if Claude Code hadn't been detected. It now asks: `Claude Code already has <plugin> as a plugin. Which other agents should get its skills too?`
+
 ## 1.3.4
 
 - **A companion file that its source repo no longer serves no longer fails the install.** When a registry pack links to a file the upstream repo has since deleted or moved, `add` (and the MCP install tool) now installs everything else and warns which files are missing, e.g. `1 companion file is gone from the source repo and was not installed (scripts/gone.ts)`. Before, one such link failed the whole bundle and `add owner/name` fell back to fetching the slug as a GitHub repo, ending in a misleading 404 with nothing installed. `update` stays strict: it never replaces a full install with a partial one.
