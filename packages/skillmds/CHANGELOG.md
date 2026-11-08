@@ -2,6 +2,11 @@
 
 All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
 
+## 1.3.6
+
+- **Installed skills name where they came from.** A skill installed from the registry (with `add`, `update` or the MCP install tool) gets one line in its frontmatter, `metadata.source: https://skillmd.com/skills/<owner>/<name>`, so an agent reading it knows its SkillMD page. Every other byte is the author's: an existing `metadata` block gains that one line, and an author's own `metadata.source` is never replaced. The line is added after the integrity checks, and the lock file's digest still covers the bytes the registry served, so `update` is unaffected. GitHub, gist and local installs are written exactly as fetched.
+- **find-skills, offered once.** After your first successful install in a terminal, `add` asks once whether to also add `skillmd/find-skills`, a skill that tells your agent to look on SkillMD when a task needs know-how it doesn't have, and to vet what it finds before suggesting it. Yes or no, it never asks again; an agent running the CLI, `-y` and `--json` are never asked.
+
 ## 1.3.5
 
 - **The agent picker now says why Claude Code isn't in it.** `add plugin:owner/slug` installs the plugin into Claude Code as a real plugin first, then asks which other agents should get its skills, leaving Claude Code out so it doesn't get the same skills twice. The question read "Which agents do you want to install to?", and the confirmation only printed after the run, so the list looked as if Claude Code hadn't been detected. It now asks: `Claude Code already has <plugin> as a plugin. Which other agents should get its skills too?`

@@ -10,6 +10,7 @@ import { collectFiles, resolvePackFiles, resolveSource } from "../source.js";
 import { looksLikeProject } from "../project.js";
 import { agentDir, agentSupportsGlobal, detectAgents } from "../agents.js";
 import { installSkill } from "../installer.js";
+import { readLock } from "../lock.js";
 import type { InstallResult, InstallTarget, SkillFileInput } from "../installer.js";
 import { parseSource, sourceId } from "../sources.js";
 import { claudeCliAvailable, installClaudePlugin, installPluginNatively, MARKETPLACE_NAME } from "../claudePlugin.js";
@@ -468,6 +469,10 @@ export interface AddResult {
   output: string;
   /** The user backed out of a prompt; nothing was written. */
   cancelled?: boolean;
+  /** Where an install went, and to which agents: a follow-up install (the
+   *  find-skills offer) lands in the same place without asking again. */
+  scope?: "global" | "project";
+  agents?: string[];
 }
 
 export type Scope = { global: boolean; cwd?: string; home?: string; env?: NodeJS.ProcessEnv };
@@ -565,6 +570,8 @@ function finish(flags: AddFlags, outcome: AddOutcome): AddResult {
       return {
         written, blocked, exitCode,
         output: json ? JSON.stringify(doc, null, 2) : renderHuman(outcome.notices, outcome.records, outcome.paths),
+        scope: outcome.scope,
+        agents: [...new Set(installed.flatMap((d) => d.targets.map((t) => t.agent)))],
       };
     }
     case "list": {
@@ -944,6 +951,8 @@ export interface AddUI {
   message: (message: string) => void;
   outro: (message: string) => void;
   cancel: (message: string) => void;
+  /** A yes/no question; null when the user backs out. Absent → never asked. */
+  confirm?: (message: string) => Promise<boolean | null>;
 }
 
 const clackUI: AddUI = {
@@ -952,7 +961,39 @@ const clackUI: AddUI = {
   message: (m) => p.log.message(m),
   outro: (m) => p.outro(m),
   cancel: (m) => p.cancel(m),
+  confirm: async (m) => {
+    const answer = await p.confirm({ message: m, initialValue: true });
+    return p.isCancel(answer) ? null : answer;
+  },
 };
+
+/** SkillMD's own skill-finder: tells the agent to look on SkillMD when a task
+ *  needs a skill it doesn't have. */
+export const FIND_SKILLS = "skillmd/find-skills";
+
+/** Offer find-skills once, after a successful install in a terminal, into the
+ *  same scope and agents. Recorded as offered before asking, so a yes, a no or
+ *  a Ctrl-C all mean it is never asked again; an agent driving the CLI, -y and
+ *  --json never get here (runAddWithUI only draws for an interactive human). */
+async function offerFindSkills(source: string, flags: AddFlags, run: AddResult, ui: AddUI, deps: AddDeps): Promise<void> {
+  if (!ui.confirm || run.exitCode !== 0 || !run.written.length || !run.scope || !run.agents?.length) return;
+  if (source.replace(/^registry:/, "").toLowerCase() === FIND_SKILLS) return;
+  const cfg = readConfig(flags.home);
+  if (cfg.findSkillsOffered) return;
+  const global = run.scope === "global";
+  const lock = readLock({ global, cwd: flags.cwd, home: flags.home });
+  if (Object.values(lock.skills).some((e) => e.source === `registry:${FIND_SKILLS}`)) return;
+  try { writeConfig({ ...cfg, findSkillsOffered: true }, flags.home); } catch { /* best-effort: worst case it asks again */ }
+  const yes = await ui.confirm("Also add find-skills, so your agent can look for more skills on SkillMD when a task needs one?");
+  if (!yes) return;
+  const r = await runAdd(FIND_SKILLS, {
+    ...flags, yes: true, json: false, skill: undefined, list: undefined, ref: undefined,
+    global, project: !global, agent: run.agents,
+  }, deps);
+  ui.message(r.exitCode === 0
+    ? `${pc.green(GLYPH.ok)} find-skills added`
+    : pc.yellow(`${GLYPH.warn} find-skills could not be added. Try later: npx skillmds add ${FIND_SKILLS}`));
+}
 
 export interface AddUIOptions {
   /** Terminal-drawing calls. Defaults to clack. */
@@ -1012,6 +1053,7 @@ export async function runAddWithUI(
     }
     // The document goes INSIDE the frame, before the outro closes it.
     ui.message(run.output);
+    await offerFindSkills(source, flags, run, ui, base);
     ui.outro(run.exitCode === 0
       ? `Done. Run ${pc.cyan("skillmd list")} to see everything installed.`
       : pc.red("Some skills were not installed."));

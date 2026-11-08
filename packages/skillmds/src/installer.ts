@@ -11,6 +11,7 @@ import type { ScopeOptions } from "./agents.js";
 import { WINDOWS_RESERVED } from "./limits.js";
 import { readLock, removeEntry, upsertEntry } from "./lock.js";
 import type { LockEntry } from "./lock.js";
+import { filesForInstall } from "./provenance.js";
 
 export interface SkillFileInput { path: string; contents: string | Buffer }
 export type LinkMode = "junction" | "symlink" | "copy" | "canonical";
@@ -159,7 +160,9 @@ export async function installSkill(req: InstallRequest): Promise<InstallResult> 
   const staging = `${canonical}.tmp-${process.pid}`;
   rmSync(staging, { recursive: true, force: true });
   try {
-    writeTree(staging, req.files);
+    // A registry install's SKILL.md gains its SkillMD page; the lock digest
+    // below stays on req.files, the bytes the registry served and update compares.
+    writeTree(staging, filesForInstall(req.files, req.source));
   } catch (e) {
     rmSync(staging, { recursive: true, force: true });
     throw e;

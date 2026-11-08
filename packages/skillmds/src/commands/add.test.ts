@@ -645,6 +645,63 @@ describe("runAddWithUI framing", () => {
   });
 });
 
+describe("the find-skills offer", () => {
+  const tty = { stdinTTY: true, stdoutTTY: true, env: {} };
+  const FIND = `---\nname: find-skills\ndescription: Find and install agent skills from the SkillMD registry when a task needs one.\n---\n\n# Find skills\n\n${"body ".repeat(50)}`;
+  const findSkills: AddCandidate = { name: "find-skills", raw: FIND, slug: "find-skills", source: "registry:skillmd/find-skills", registrySlug: "skillmd/find-skills" };
+  const deps = (asked: string[]): AddDeps => ({
+    resolve: async (arg) => { asked.push(arg); return arg === "skillmd/find-skills" ? [findSkills] : [tracked("demo")]; },
+    fireInstall: () => {},
+  });
+  function ui(answer: boolean | null) {
+    const questions: string[] = [];
+    const messages: string[] = [];
+    const u: AddUI = {
+      intro() {}, spinner: () => ({ start() {}, stop() {} }), outro() {}, cancel() {},
+      message: (m) => { messages.push(stripAnsi(m)); },
+      confirm: async (q) => { questions.push(q); return answer; },
+    };
+    return { u, questions, messages };
+  }
+  const flags = (home: string, cwd: string): AddFlags => ({ cwd, home, global: true, agent: ["claude-code"], env: {} });
+
+  it("is asked once after an install, and a yes installs it into the same scope and agents", async () => {
+    const home = tmp(); const cwd = tmp();
+    const asked: string[] = [];
+    const first = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps(asked) });
+    expect(first.questions).toHaveLength(1);
+    expect(asked).toEqual(["o/demo", "skillmd/find-skills"]);
+    expect(readLock({ global: true, home }).skills["find-skills"]?.source).toBe("registry:skillmd/find-skills");
+    expect(first.messages.at(-1)).toContain("find-skills added");
+
+    const again = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: again.u, term: tty, deps: deps([]) });
+    expect(again.questions).toEqual([]);
+  });
+
+  it("remembers a no, and installs nothing extra", async () => {
+    const home = tmp(); const cwd = tmp();
+    const asked: string[] = [];
+    const first = ui(false);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps(asked) });
+    expect(first.questions).toHaveLength(1);
+    expect(asked).toEqual(["o/demo"]);
+    expect(readLock({ global: true, home }).skills["find-skills"]).toBeUndefined();
+
+    const again = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: again.u, term: tty, deps: deps([]) });
+    expect(again.questions).toEqual([]);
+  });
+
+  it("is not asked when the install is find-skills itself", async () => {
+    const home = tmp(); const cwd = tmp();
+    const only = ui(true);
+    await runAddWithUI("skillmd/find-skills", flags(home, cwd), { ui: only.u, term: tty, deps: deps([]) });
+    expect(only.questions).toEqual([]);
+  });
+});
+
 describe("defaultNeedsPrompt in a real run", () => {
   it("exits 1 with the -y hint when a scope decision has nobody to answer it", async () => {
     // vitest runs with a piped stdin, so this is the real non-interactive path:

@@ -16,6 +16,8 @@ export interface CliConfig {
   tokenHost?: string;
   /** Agents picked at the last interactive install; pre-selected next time. */
   lastAgents?: string[];
+  /** find-skills was offered after an install (yes or no): never ask again. */
+  findSkillsOffered?: boolean;
 }
 
 export interface GlobalFlags {

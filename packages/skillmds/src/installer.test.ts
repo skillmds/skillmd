@@ -23,6 +23,22 @@ describe("installSkill", () => {
     expect(readLock({ global: false, cwd }).skills.demo?.source).toBe("registry:o/demo");
   });
 
+  it("writes a registry skill with its SkillMD page, but digests the bytes the registry served", async () => {
+    const cwd = tmp(); mkdirSync(join(cwd, ".claude"));
+    const r = await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: false, cwd }, agents: ["claude-code"] });
+    const written = readFileSync(join(cwd, ".agents", "skills", "demo", "SKILL.md"), "utf8");
+    expect(written).toBe("---\nname: demo\ndescription: d\nmetadata:\n  source: https://skillmd.com/skills/o/demo\n---\nbody");
+    // update compares the registry's latest files against this digest
+    expect(r.digest).toBe(digestOf(files));
+    expect(readLock({ global: false, cwd }).skills.demo?.digest).toBe(digestOf(files));
+  });
+
+  it("writes a GitHub install exactly as fetched", async () => {
+    const cwd = tmp(); mkdirSync(join(cwd, ".claude"));
+    await installSkill({ name: "demo", files, source: "github:o/r", scope: { global: false, cwd }, agents: ["claude-code"] });
+    expect(readFileSync(join(cwd, ".agents", "skills", "demo", "SKILL.md"), "utf8")).toBe(files[0]!.contents);
+  });
+
   it("never creates an agent dir the project does not already have (litter rule)", async () => {
     const cwd = tmp();
     const r = await installSkill({ name: "demo", files, source: "registry:o/demo", scope: { global: false, cwd }, agents: ["claude-code", "cursor", "kiro"] });
