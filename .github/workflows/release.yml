@@ -17,6 +17,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # get-skill's npm Trusted Publisher names this environment; skillmds' names none,
+    # so it accepts either.
+    environment: SkillMD
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
