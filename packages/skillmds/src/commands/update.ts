@@ -95,7 +95,7 @@ export async function runUpdate(names: string[], flags: UpdateFlags, deps: Updat
       seen.add(s.name);
       const label = `${s.name}${scopes.length > 1 ? pc.dim(` [${s.scope}]`) : ""}`;
       const entry = lock.skills[s.name];
-      if (!entry) { lines.push(pc.dim(`- ${label} untracked — reinstall with \`skillmd add\` to track updates`)); continue; }
+      if (!entry) { lines.push(pc.dim(`- ${label} untracked — reinstall with \`npx get-skill add\` to track updates`)); continue; }
       if (entry.source.startsWith("local:")) { lines.push(pc.dim(`- ${label} local source — not auto-updated`)); continue; }
       try {
         const latest = await deps.fetchLatest(entry.source, flags, s.name);

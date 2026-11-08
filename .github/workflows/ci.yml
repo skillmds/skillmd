@@ -33,13 +33,13 @@ jobs:
       - name: Pack sanity (files arrays resolve, no vendor/)
         shell: bash
         run: |
-          npm pack --dry-run -w @skillmds/core -w skillmds --json > packs.json
+          npm pack --dry-run -w @skillmds/core -w get-skill --json > packs.json
           node -e "
             const packs = require('./packs.json');
             const files = packs.flatMap(t => t.files.map(f => f.path));
-            if (!files.includes('dist/cli.js')) throw new Error('skillmds tarball is missing dist/cli.js');
+            if (!files.includes('dist/cli.js')) throw new Error('get-skill tarball is missing dist/cli.js');
             if (!files.includes('dist/index.d.ts')) throw new Error('core tarball is missing type declarations');
-            if (!files.includes('bin/skillmd-mcp.mjs')) throw new Error('skillmds tarball is missing the MCP bin');
+            if (!files.includes('bin/skillmd-mcp.mjs')) throw new Error('get-skill tarball is missing the MCP bin');
             if (files.some(f => f.startsWith('vendor/'))) throw new Error('vendor/ leaked into a tarball');
             console.log('tarball contents OK (' + files.length + ' files)');
           "
@@ -54,7 +54,7 @@ jobs:
 
   action-smoke:
     # Exercises the composite action's wiring. Note it runs the *published*
-    # skillmds@1 from npm (that is what the action pins), not this checkout.
+    # get-skill@1 from npm (that is what the action pins), not this checkout.
     runs-on: ubuntu-latest
     permissions:
       contents: read

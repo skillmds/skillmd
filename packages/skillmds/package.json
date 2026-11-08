@@ -1,14 +1,15 @@
 {
-  "name": "skillmds",
-  "version": "1.3.6",
-  "description": "SkillMD for agents: the `skillmds` MCP server + the `skillmd` CLI (lint, scan, search, install, publish Agent Skills) from skillmd.com.",
+  "name": "get-skill",
+  "version": "1.3.7",
+  "description": "Find, install, lint and publish Agent Skills (SKILL.md) from skillmd.com: the get-skill CLI and MCP server.",
   "license": "MIT",
   "author": "SkillMD",
   "type": "module",
   "mcpName": "com.skillmd/skillmd",
   "bin": {
-    "skillmds": "bin/skillmd-mcp.mjs",
-    "skillmd": "bin/skillmd.mjs"
+    "get-skill": "bin/skillmd-mcp.mjs",
+    "skillmd": "bin/skillmd.mjs",
+    "skillmds": "bin/skillmd-mcp.mjs"
   },
   "files": [
     "bin",
@@ -21,6 +22,7 @@
     "node": ">=18"
   },
   "keywords": [
+    "get-skill",
     "mcp",
     "model-context-protocol",
     "cli",

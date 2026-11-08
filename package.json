@@ -11,7 +11,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "npm run build -w @skillmds/core && npm run build -w skillmds",
+    "build": "npm run build -w @skillmds/core && npm run build -w get-skill",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run build -w @skillmds/core && npm test --workspaces --if-present",
     "lint:skills": "node packages/skillmds/bin/skillmd.mjs lint examples/skills"

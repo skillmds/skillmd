@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/skillmds"><img src="https://img.shields.io/npm/v/skillmds.svg?label=skillmds" alt="skillmds on npm"></a>
+  <a href="https://www.npmjs.com/package/get-skill"><img src="https://img.shields.io/npm/v/get-skill.svg?label=get-skill" alt="get-skill on npm"></a>
   <a href="https://www.npmjs.com/package/@skillmds/core"><img src="https://img.shields.io/npm/v/%40skillmds%2Fcore.svg?label=%40skillmds%2Fcore" alt="@skillmds/core on npm"></a>
-  <a href="https://www.npmjs.com/package/skillmds"><img src="https://img.shields.io/npm/dm/skillmds.svg" alt="npm downloads"></a>
+  <a href="https://www.npmjs.com/package/get-skill"><img src="https://img.shields.io/npm/dm/get-skill.svg" alt="npm downloads"></a>
   <a href="https://github.com/skillmds/skillmd/actions/workflows/ci.yml"><img src="https://github.com/skillmds/skillmd/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license"></a>
 </p>
@@ -40,7 +40,7 @@ This repository is everything that runs on your machine or in your CI, MIT-licen
 
 | Package | What it is | Install |
 |---|---|---|
-| [`skillmds`](packages/skillmds) | One npm package, two binaries: the **`skillmd` CLI** and the **`skillmds` MCP server** | `npm i -g skillmds` |
+| [`get-skill`](packages/skillmds) | One npm package: the **CLI** and the **MCP server** (`get-skill`, also installed as `skillmd`) | `npm i -g get-skill` |
 | [`@skillmds/core`](packages/core) | The SKILL.md engine: parser, lint rules, security scanner, quality score, SARIF / JSON / GitHub formatters | `npm i @skillmds/core` |
 | [`skillmds/skillmd/action`](action) | GitHub Action: lint every skill in a repo, results in GitHub Code Scanning | `uses: skillmds/skillmd/action@v1` |
 
@@ -50,11 +50,11 @@ The registry applies the same engine, so a skill that passes locally passes on p
 
 ```bash
 # Search the registry and install a skill into every agent on your machine
-npx skillmds search "pdf"
-npx skillmds add anthropic/pdf
+npx get-skill search "pdf"
+npx get-skill add anthropic/pdf
 
 # Lint your own skill before you share it
-npx skillmds lint ./my-skill
+npx get-skill lint ./my-skill
 ```
 
 ## Plugins
@@ -64,7 +64,7 @@ real plugin — `/plugin` lists it, and enable, disable and uninstall work on th
 set — and on every other agent the skills are installed individually.
 
 ```bash
-npx skillmds add plugin:skillmd/design
+npx get-skill add plugin:skillmd/design
 ```
 
 To browse them inside Claude Code's Plugins tab instead, add this repository as a
@@ -79,7 +79,7 @@ No account needed for any of the above. Skills land in each detected agent's own
 ## The CLI: `skillmd`
 
 ```bash
-npm i -g skillmds
+npm i -g get-skill
 ```
 
 | Command | What it does |
@@ -104,18 +104,18 @@ skillmd add some/skill --deny executes_scripts   # refuse skills that run code
 
 Full reference: [docs/cli.md](docs/cli.md) · [CLI docs on skillmd.com](https://skillmd.com/docs/cli) · [How one SKILL.md works in every agent](https://skillmd.com/blog/one-skill-md-for-every-agent-compatibility-matrix)
 
-## The MCP server: `skillmds`
+## The MCP server: `get-skill`
 
 Give any MCP-capable agent the whole registry. It can search, inspect, lint and install skills mid-conversation.
 
 ```bash
 # Claude Code
-claude mcp add skillmd -- npx -y skillmds
+claude mcp add skillmd -- npx -y get-skill
 ```
 
 ```jsonc
 // Claude Desktop, Cursor, VS Code, Windsurf, … (examples/mcp/ has per-client files)
-{ "mcpServers": { "skillmd": { "command": "npx", "args": ["-y", "skillmds"] } } }
+{ "mcpServers": { "skillmd": { "command": "npx", "args": ["-y", "get-skill"] } } }
 ```
 
 Or use the **hosted remote server**, zero install, streamable HTTP:

@@ -52,7 +52,7 @@ describe("runUpdate", () => {
     const d = deps({});
     const r = await runUpdate([], { global: true, home, yes: true }, d);
     expect(d.fetched).toEqual([]);
-    expect(r.output).toMatch(/old.*untracked.*skillmd add/);
+    expect(r.output).toMatch(/old.*untracked.*npx get-skill add/);
     expect(r.exitCode).toBe(0);
   });
   it("--check lists available updates and writes nothing; exit 0", async () => {

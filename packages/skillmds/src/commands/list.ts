@@ -33,7 +33,7 @@ export function runList(flags: ListFlags = {}): { items: ListItem[]; output: str
   if (flags.json) {
     return { items, output: JSON.stringify(items.map(({ name, scope, path, agents, source, mode, tracked, description }) => ({ name, scope, path, agents, source: source ?? null, mode, tracked, description })), null, 2) };
   }
-  if (items.length === 0) return { items, output: pc.dim("No installed skills found. Install one with `skillmd add owner/name`.") };
+  if (items.length === 0) return { items, output: pc.dim("No installed skills found. Install one with `npx get-skill add owner/name`.") };
   const w = Math.max(...items.map((i) => i.name.length), 4);
   const lines = items.map((i) => {
     const tag = i.tracked ? pc.dim(i.source ?? "") : pc.yellow("untracked");

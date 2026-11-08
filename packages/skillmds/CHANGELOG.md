@@ -1,6 +1,10 @@
 # Changelog
 
-All notable changes to `skillmds` are documented here. Versions follow [semver](https://semver.org).
+All notable changes to `get-skill` (published as `skillmds` until 1.3.6) are documented here. Versions follow [semver](https://semver.org).
+
+## 1.3.7
+
+- **The package is now `get-skill`.** Install and run it as `npx get-skill add owner/name`, `npx get-skill search "pdf"`, and so on; MCP clients start the server with `npx -y get-skill`. `npm i -g get-skill` installs the `get-skill` and `skillmd` commands. Every release is still published as `skillmds` too, with identical contents, so existing setups keep working.
 
 ## 1.3.6
 

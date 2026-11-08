@@ -46,6 +46,6 @@ describe("runList", () => {
     expect(doc[0]).toMatchObject({ name: "a", scope: "global", source: "registry:o/a", tracked: true, agents: ["claude-code"] });
   });
   it("prints a hint when nothing is installed", () => {
-    expect(runList({ cwd: tmp(), home: tmp() }).output).toMatch(/No installed skills.*skillmd add/);
+    expect(runList({ cwd: tmp(), home: tmp() }).output).toMatch(/No installed skills.*npx get-skill add/);
   });
 });

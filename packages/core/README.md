@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@skillmds/core.svg)](https://www.npmjs.com/package/@skillmds/core)
 [![license](https://img.shields.io/npm/l/@skillmds/core.svg)](https://github.com/skillmds/skillmd/blob/main/LICENSE)
 
-The SKILL.md engine behind [SkillMD](https://skillmd.com): parser, lint rules, security scanner, quality score, and report formatters for [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills). The same code runs in the SkillMD registry, the [`skillmd` CLI, and the `skillmds` MCP server](https://www.npmjs.com/package/skillmds) — so a skill that lints clean locally is valid everywhere.
+The SKILL.md engine behind [SkillMD](https://skillmd.com): parser, lint rules, security scanner, quality score, and report formatters for [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills). The same code runs in the SkillMD registry, the [`get-skill` CLI and MCP server](https://www.npmjs.com/package/get-skill) — so a skill that lints clean locally is valid everywhere.
 
 ESM-only. No runtime dependencies beyond `yaml`. Runs unchanged in Node (≥18), browsers, and edge runtimes.
 

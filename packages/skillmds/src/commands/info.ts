@@ -89,7 +89,7 @@ export async function runInfo(slug: string, flags: InfoFlags, deps: InfoDeps = {
   const commitSha = safeText(s.provenance?.commit_sha ?? s.commit_sha, 100);
   if (sourceRepo) lines.push(pc.dim(`  source: ${sourceRepo}${commitSha ? ` @ ${commitSha.slice(0, 8)}` : ""}`));
   lines.push(pc.dim(`  page: https://skillmd.com/skills/${slugTxt}`));
-  lines.push(pc.dim(`  install: ${safeText(s.install?.cli, 300) || `npx skillmds add ${slugTxt}`}`));
+  lines.push(pc.dim(`  install: ${safeText(s.install?.cli, 300) || `npx get-skill add ${slugTxt}`}`));
 
   return { ok: true, exitCode: 0, output: lines.join("\n"), skill: s };
 }

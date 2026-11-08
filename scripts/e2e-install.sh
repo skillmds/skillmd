@@ -2,7 +2,7 @@
 # End-to-end check of the built CLI against a throwaway HOME. Uses the real
 # registry for one small skill (trailofbits/code-improver).
 #
-# Run it after `npm run build -w skillmds`. It needs network access for that
+# Run it after `npm run build -w get-skill`. It needs network access for that
 # one skill; everything else is local filesystem.
 set -euo pipefail
 

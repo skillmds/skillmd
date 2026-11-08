@@ -110,7 +110,7 @@ export async function resolveSource(arg: string, opts: RemoteOptions = {}): Prom
     if (st.isFile()) return [loadLocal(spec.path)];
     const files = findSkillFiles(spec.path);
     if (files.length === 0) {
-      throw new Error(`No SKILL.md found under ${spec.path}. Point at a skill directory, e.g. "skillmd lint ./my-skill", or run "skillmd init" to create one.`);
+      throw new Error(`No SKILL.md found under ${spec.path}. Point at a skill directory, e.g. "npx get-skill lint ./my-skill", or run "npx get-skill init" to create one.`);
     }
     return files.map(loadLocal);
   }
@@ -130,7 +130,7 @@ export async function resolveSource(arg: string, opts: RemoteOptions = {}): Prom
   // slugs and resolves each one through the registry before anything lands
   // here. Reaching this point means a caller skipped that expansion.
   if (spec.kind === "plugin") {
-    throw new Error(`"${spec.display}" is a plugin, not a single skill — install it with \`skillmd add ${spec.display}\`.`);
+    throw new Error(`"${spec.display}" is a plugin, not a single skill — install it with \`npx get-skill add ${spec.display}\`.`);
   }
   const gh = asGithub(spec);
   // Whole-repo resolves walk the checkout without buffering contents, so only a

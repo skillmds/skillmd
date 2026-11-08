@@ -992,7 +992,7 @@ async function offerFindSkills(source: string, flags: AddFlags, run: AddResult, 
   }, deps);
   ui.message(r.exitCode === 0
     ? `${pc.green(GLYPH.ok)} find-skills added`
-    : pc.yellow(`${GLYPH.warn} find-skills could not be added. Try later: npx skillmds add ${FIND_SKILLS}`));
+    : pc.yellow(`${GLYPH.warn} find-skills could not be added. Try later: npx get-skill add ${FIND_SKILLS}`));
 }
 
 export interface AddUIOptions {
@@ -1055,7 +1055,7 @@ export async function runAddWithUI(
     ui.message(run.output);
     await offerFindSkills(source, flags, run, ui, base);
     ui.outro(run.exitCode === 0
-      ? `Done. Run ${pc.cyan("skillmd list")} to see everything installed.`
+      ? `Done. Run ${pc.cyan("npx get-skill list")} to see everything installed.`
       : pc.red("Some skills were not installed."));
     return { run, printed: true };
   } catch (e) {

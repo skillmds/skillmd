@@ -2,7 +2,7 @@ name: release
 
 # Tag-driven npm publishing with provenance:
 #   core-vX.Y.Z  -> @skillmds/core
-#   vX.Y.Z       -> skillmds
+#   vX.Y.Z       -> get-skill (and skillmds, its former name, same contents)
 # The floating `v1` tag (GitHub Action pointer) never matches these globs.
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
             echo "dir=packages/core" >> "$GITHUB_OUTPUT"
             echo "version=${TAG#core-v}" >> "$GITHUB_OUTPUT"
           else
-            echo "pkg=skillmds" >> "$GITHUB_OUTPUT"
+            echo "pkg=get-skill" >> "$GITHUB_OUTPUT"
             echo "dir=packages/skillmds" >> "$GITHUB_OUTPUT"
             echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
@@ -47,8 +47,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - name: skillmds only — @skillmds/core dep must resolve on the public registry
-        if: steps.meta.outputs.pkg == 'skillmds'
+      - name: get-skill only — @skillmds/core dep must resolve on the public registry
+        if: steps.meta.outputs.pkg == 'get-skill'
         run: |
           RANGE=$(node -p "require('./packages/skillmds/package.json').dependencies['@skillmds/core']")
           npm view "@skillmds/core@$RANGE" version
@@ -56,6 +56,15 @@ jobs:
         # Authenticates via npm Trusted Publishing (OIDC, id-token: write above);
         # both packages trust skillmds/skillmd + release.yml. No npm token needed.
         run: npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
+      - name: Also publish as skillmds (the former name), same contents
+        # Existing setups run `npx skillmds`; keep them current. Never blocks
+        # the release: get-skill is the package.
+        if: steps.meta.outputs.pkg == 'get-skill'
+        continue-on-error: true
+        run: |
+          cd packages/skillmds
+          npm pkg set name=skillmds
+          npm publish --provenance --access public
       - name: GitHub Release with CHANGELOG notes
         env:
           GH_TOKEN: ${{ github.token }}

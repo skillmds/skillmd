@@ -2,7 +2,7 @@
   "mcpServers": {
     "skillmd": {
       "command": "npx",
-      "args": ["-y", "skillmds"],
+      "args": ["-y", "get-skill"],
       "env": {
         "SKILLMD_TOKEN": ""
       }

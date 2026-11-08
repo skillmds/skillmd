@@ -1,27 +1,27 @@
 # SkillMD over MCP
 
-SkillMD speaks [Model Context Protocol](https://modelcontextprotocol.io) two ways: a **stdio server** your client runs locally (`npx -y skillmds`), and a **hosted remote server** at `https://api.skillmd.com/mcp`. Registry entry: [`com.skillmd/skillmd`](https://registry.modelcontextprotocol.io) — discoverable via the server card at `https://skillmd.com/.well-known/mcp/server-card.json`.
+SkillMD speaks [Model Context Protocol](https://modelcontextprotocol.io) two ways: a **stdio server** your client runs locally (`npx -y get-skill`), and a **hosted remote server** at `https://api.skillmd.com/mcp`. Registry entry: [`com.skillmd/skillmd`](https://registry.modelcontextprotocol.io) — discoverable via the server card at `https://skillmd.com/.well-known/mcp/server-card.json`.
 
 ## Stdio server (local)
 
 ```bash
 # Claude Code
-claude mcp add skillmd -- npx -y skillmds
+claude mcp add skillmd -- npx -y get-skill
 ```
 
 Other clients: see [examples/mcp/](../examples/mcp/) for Claude Desktop, Cursor, and VS Code configs. The shape is always:
 
 ```jsonc
-{ "mcpServers": { "skillmd": { "command": "npx", "args": ["-y", "skillmds"] } } }
+{ "mcpServers": { "skillmd": { "command": "npx", "args": ["-y", "get-skill"] } } }
 ```
 
 ### One binary, two behaviors
 
-The `skillmds` binary dispatches on how it's invoked:
+The `get-skill` binary dispatches on how it's invoked:
 
-- `skillmds <anything>` → runs the **CLI** (commander owns argv, so unknown commands error properly)
-- `skillmds` on a terminal → runs the CLI's interactive menu
-- `skillmds` with piped stdio and no args → starts the **MCP server** (exactly how MCP clients spawn it)
+- `get-skill <anything>` → runs the **CLI** (commander owns argv, so unknown commands error properly)
+- `get-skill` on a terminal → runs the CLI's interactive menu
+- `get-skill` with piped stdio and no args → starts the **MCP server** (exactly how MCP clients spawn it)
 
 ### Environment
 

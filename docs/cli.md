@@ -1,6 +1,6 @@
 # `skillmd` CLI reference
 
-Install: `npm i -g skillmds` (ships both the `skillmd` CLI and the `skillmds` MCP server). One-off runs: `npx skillmds <command>`.
+Install: `npm i -g get-skill` (ships the `get-skill` CLI and MCP server, also installed as `skillmd`). One-off runs: `npx get-skill <command>`.
 
 Global options, accepted by every command:
 

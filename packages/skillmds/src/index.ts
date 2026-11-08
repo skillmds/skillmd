@@ -24,11 +24,11 @@ try {
   /* keep fallback */
 }
 
-const program = new Command("skillmd")
+const program = new Command("get-skill")
   .version(version)
   .description("Lint, validate, and install Agent Skills from the SkillMD registry.")
   .option("--json", "machine-readable output")
-  .option("--token <token>", "personal access token (prefer `skillmd login` or SKILLMD_TOKEN — command-line tokens show up in process lists)")
+  .option("--token <token>", "personal access token (prefer `npx get-skill login` or SKILLMD_TOKEN — command-line tokens show up in process lists)")
   .option("--api <url>", "override the registry API base URL")
   .option("--insecure-http", "allow an http:// --api base (local development only)");
 
@@ -38,14 +38,14 @@ program.configureHelp({ sortSubcommands: false });
 
 program.addHelpText("after", `
 Examples:
-  $ skillmd add anthropic/pdf                  install from the registry (asks project vs global)
-  $ skillmd add owner/repo/skills/x#main -g    a GitHub subfolder at a ref, into your user dirs
-  $ skillmd add ./my-skill -a claude-code -p   a local skill into this project for one agent
-  $ skillmd add anthropic/pdf -y --json        non-interactive, machine-readable
-  $ skillmd list                               everything installed, project and global
-  $ skillmd check                              which installed skills have updates
-  $ skillmd update -g                          update your user-level skills
-  $ skillmd remove pdf                         remove a skill from every agent
+  $ npx get-skill add anthropic/pdf                  install from the registry (asks project vs global)
+  $ npx get-skill add owner/repo/skills/x#main -g    a GitHub subfolder at a ref, into your user dirs
+  $ npx get-skill add ./my-skill -a claude-code -p   a local skill into this project for one agent
+  $ npx get-skill add anthropic/pdf -y --json        non-interactive, machine-readable
+  $ npx get-skill list                               everything installed, project and global
+  $ npx get-skill check                              which installed skills have updates
+  $ npx get-skill update -g                          update your user-level skills
+  $ npx get-skill remove pdf                         remove a skill from every agent
 
 Quality:   lint  scan  rules  init
 Registry:  search  info  add  list  remove  update  check
@@ -60,7 +60,7 @@ Docs: https://skillmd.com/docs/cli`);
 program.hook("preAction", (thisCmd) => {
   const opts = thisCmd.opts() as { token?: string };
   if (opts.token && process.stderr.isTTY) {
-    console.error(pc.yellow("⚠ --token is visible in your shell history and process list; prefer `skillmd login` or SKILLMD_TOKEN."));
+    console.error(pc.yellow("⚠ --token is visible in your shell history and process list; prefer `npx get-skill login` or SKILLMD_TOKEN."));
   }
 });
 

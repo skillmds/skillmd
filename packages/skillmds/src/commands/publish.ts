@@ -23,7 +23,7 @@ const defaultDeps: PublishDeps = {
   resolve: resolveSource,
   async submit(payload, flags) {
     const { api, hasToken } = createClient(flags);
-    if (!hasToken) throw new Error("No token. Run `skillmd login` or pass --token.");
+    if (!hasToken) throw new Error("No token. Run `npx get-skill login` or pass --token.");
     return api(`/api/skills`, {
       method: "POST",
       headers: { "content-type": "application/json" },

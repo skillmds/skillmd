@@ -3,7 +3,7 @@
     "skillmd": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "skillmds"]
+      "args": ["-y", "get-skill"]
     }
   }
 }

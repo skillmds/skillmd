@@ -23,7 +23,7 @@ export interface ParseOptions {
 }
 
 const UNSUPPORTED = (what: string): Error =>
-  new Error(`${what} sources are not supported yet — clone it locally and run \`skillmd add ./path/to/skill\`.`);
+  new Error(`${what} sources are not supported yet — clone it locally and run \`npx get-skill add ./path/to/skill\`.`);
 
 function assertSubpath(sub: string | undefined): string | undefined {
   if (!sub) return undefined;

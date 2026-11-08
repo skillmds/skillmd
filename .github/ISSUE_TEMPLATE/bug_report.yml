@@ -16,7 +16,7 @@ body:
       label: Surface
       options:
         - skillmd CLI
-        - skillmds MCP server (stdio)
+        - get-skill MCP server (stdio)
         - Remote MCP server (api.skillmd.com/mcp)
         - "@skillmds/core (library)"
         - GitHub Action

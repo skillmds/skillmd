@@ -2,32 +2,32 @@
   <img src="https://skillmd.com/brand/banner.png" alt="SkillMD" width="560">
 </p>
 
-# skillmds
+# get-skill
 
-[![npm version](https://img.shields.io/npm/v/skillmds.svg)](https://www.npmjs.com/package/skillmds)
-[![license](https://img.shields.io/npm/l/skillmds.svg)](https://github.com/skillmds/skillmd/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/get-skill.svg)](https://www.npmjs.com/package/get-skill)
+[![license](https://img.shields.io/npm/l/get-skill.svg)](https://github.com/skillmds/skillmd/blob/main/LICENSE)
 [![source](https://img.shields.io/badge/source-skillmds%2Fskillmd-blue?logo=github)](https://github.com/skillmds/skillmd)
 
 Tools for working with [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) (`SKILL.md`) from the [SkillMD](https://skillmd.com) registry. One package, two binaries:
 
 - **`skillmd`** — a CLI to lint, scan, search, install, and publish skills.
-- **`skillmds`** — an MCP server exposing the registry to MCP clients (Claude Code, Claude Desktop, Cursor, …).
+- **`get-skill`** — the same CLI, and an MCP server exposing the registry to MCP clients (Claude Code, Claude Desktop, Cursor, …).
 
 Both validate `SKILL.md` with the same engine ([`@skillmds/core`](https://www.npmjs.com/package/@skillmds/core)), so the CLI and the registry apply identical rules. Source lives at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd).
 
 ## Install
 
 ```bash
-npm i -g skillmds
+npm i -g get-skill
 ```
 
-This installs both the `skillmd` and `skillmds` commands. To run the CLI without installing:
+This installs both the `get-skill` and `skillmd` commands. To run the CLI without installing:
 
 ```bash
-npx skillmds lint .
+npx get-skill lint .
 ```
 
-**Which binary runs what.** `skillmds` with any argument runs the CLI. `skillmds` with no arguments starts the **MCP server** when stdin is piped (how an MCP client launches it), and opens the interactive CLI menu when there's a terminal attached. `skillmd` is always the CLI.
+**Which binary runs what.** `get-skill` with any argument runs the CLI. `get-skill` with no arguments starts the **MCP server** when stdin is piped (how an MCP client launches it), and opens the interactive CLI menu when there's a terminal attached. `skillmd` is always the CLI.
 
 ## CLI: `skillmd`
 
@@ -152,12 +152,12 @@ skillmd publish ./my-skill --dry-run
 skillmd publish ./my-skill --force   # publish despite warnings; never bypasses errors
 ```
 
-## MCP server: `skillmds`
+## MCP server: `get-skill`
 
 Claude Code:
 
 ```bash
-claude mcp add skillmd -- npx -y skillmds
+claude mcp add skillmd -- npx -y get-skill
 ```
 
 Other MCP clients:
@@ -165,7 +165,7 @@ Other MCP clients:
 ```jsonc
 {
   "mcpServers": {
-    "skillmd": { "command": "npx", "args": ["-y", "skillmds"] }
+    "skillmd": { "command": "npx", "args": ["-y", "get-skill"] }
   }
 }
 ```

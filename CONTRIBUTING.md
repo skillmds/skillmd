@@ -21,7 +21,7 @@ npm run lint:skills  # dogfood: lint the example skill with the local build
 | Path | What it is |
 |---|---|
 | `packages/core` | `@skillmds/core` — SKILL.md parser, lint rules, security scanner, quality score, formatters. |
-| `packages/skillmds` | `skillmds` — the `skillmd` CLI (`src/`, bundled to `dist/cli.js`) and the `skillmds` MCP server (`bin/skillmd-mcp.mjs`, plain readable ESM). |
+| `packages/skillmds` | `get-skill` — the CLI (`src/`, bundled to `dist/cli.js`, also installed as `skillmd`) and the MCP server (`bin/skillmd-mcp.mjs`, plain readable ESM). |
 | `action/` | The `skillmds/skillmd/action@v1` composite GitHub Action (SARIF lint for CI). |
 | `docs/` | CLI, MCP, lint-rule, and registry API references. |
 | `examples/` | MCP client configs and the fixture skill CI lints. |
@@ -43,11 +43,11 @@ Two things worth knowing before you change code:
 Releases are tag-driven; CI publishes to npm with provenance.
 
 1. Bump the package's `version` in its `package.json` and add a dated section to its `CHANGELOG.md`.
-2. For `skillmds` releases, bump `version` in the root `server.json` too (MCP registry manifest).
+2. For `get-skill` releases, bump `version` in the root `server.json` too (MCP registry manifest).
 3. Commit, then tag and push:
    - `@skillmds/core` → `git tag core-vX.Y.Z && git push origin core-vX.Y.Z`
-   - `skillmds` → `git tag vX.Y.Z && git push origin vX.Y.Z`
-   - Publishing order matters when both change: core first — the `skillmds` release job refuses to publish until its `@skillmds/core` range resolves on npm.
+   - `get-skill` → `git tag vX.Y.Z && git push origin vX.Y.Z` (CI also publishes the same build as `skillmds`, its former name)
+   - Publishing order matters when both change: core first — the `get-skill` release job refuses to publish until its `@skillmds/core` range resolves on npm.
 4. CI publishes the package and creates a GitHub Release with the matching CHANGELOG section.
 5. If the GitHub Action changed, move the floating tag: `git tag -f v1 && git push -f origin v1` (the release workflow only matches three-part tags, so `v1` never triggers it).
 6. Re-publish the MCP registry entry when `server.json` changed (bump its two `version` fields to match the npm release first). Ownership of the `com.skillmd` namespace is proven over HTTP: skillmd.com serves the Ed25519 public key at `/.well-known/mcp-registry-auth`; the private key lives outside the repo (`~/.skillmd/mcp-registry-key.pem` on the maintainer machine). Then:

@@ -5,7 +5,7 @@
 # implement the `archive` source the registry's own manifest uses, so the
 # flagship plugins are checked in here as real directories and the manifest
 # points at those paths. Everything else in the registry installs with
-# `npx skillmds add plugin:<owner>/<slug>`.
+# `npx get-skill add plugin:<owner>/<slug>`.
 #
 # Weekly, not daily: the trees are tens of megabytes and every refresh that
 # changes them is another copy in this repo's history.
