@@ -1,8 +1,9 @@
 // A skill installed from the registry carries its SkillMD page in its own
 // frontmatter (`metadata.source`), so an agent reading the skill knows where it
-// came from and where more are. Only the installed copy changes: the registry
-// serves the author's exact bytes, those are what the integrity checks and the
-// lock digest cover, and this runs after both, at write time.
+// came from and where more are. Since 2026-11-08 the registry serves every copy
+// with that line already (and moves an author's own source to `upstream`), so
+// this is the fallback for older registry copies; it runs at write time, after
+// the integrity checks, and the lock digest covers the bytes as served.
 import { parseSkillMd } from "@skillmds/core";
 
 export const SKILLMD_ORIGIN = "https://skillmd.com";
