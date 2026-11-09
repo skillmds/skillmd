@@ -4,6 +4,7 @@ import { relative, resolve, sep } from "node:path";
 import pc from "picocolors";
 import type { LintResult, Severity } from "@skillmds/core";
 import type { InstallTarget } from "./installer.js";
+import { brandWord } from "./brand.js";
 
 /** Where to measure a path from when shortening it for display. */
 export interface PathCtx { home?: string; cwd?: string }
@@ -327,4 +328,5 @@ export function renderInstallSummary(i: InstallSummaryInput, ctx: PathCtx & { wi
   return [head, body, ...skipped, ...replaced].join("\n");
 }
 
-export const banner = (): string => pc.bgCyan(pc.black(" skillmd "));
+/** The header line for framed commands: "skill" + orange "md". */
+export const banner = (): string => brandWord();

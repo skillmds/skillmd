@@ -1,5 +1,5 @@
 // Guided interactive mode, shown when `skillmd` is run with no command on a TTY.
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
 import pc from "picocolors";
 import { runLint } from "./lint.js";
 import { runScan } from "./scan.js";
@@ -10,7 +10,7 @@ import { initSkill } from "./init.js";
 import { runList } from "./list.js";
 import { runUpdate } from "./update.js";
 import { runRemove } from "./remove.js";
-import { banner } from "../ui.js";
+import { playLogo } from "../brand.js";
 import { safeText } from "../sanitize.js";
 
 function bail(v: unknown): v is symbol {
@@ -109,8 +109,15 @@ async function browseOneResult(item: SearchItem): Promise<void> {
   }
 }
 
-export async function runInteractive(): Promise<void> {
-  p.intro(banner());
+export async function runInteractive(opts: { version?: string } = {}): Promise<void> {
+  // The launch moment: the logo with its two squares dropping in, a line
+  // under it, then the menu starting right below (no clack "┌" line).
+  console.log();
+  await playLogo();
+  console.log(`
+  ${pc.dim("Teach your agent anything.")}${opts.version ? `  ${pc.dim(`v${opts.version}`)}` : ""}
+`);
+  p.startFrameAfterLogo();
 
   // Menu loops until Quit/cancel so one action doesn't silently end the session.
   for (;;) {
@@ -137,7 +144,7 @@ export async function runInteractive(): Promise<void> {
       const path = await p.text({ message: "Path to a skill or folder", placeholder: ".", defaultValue: "." });
       if (bail(path)) break;
       const target = String(path || ".");
-      const s = p.spinner();
+      const s = p.spinner("walk");
       s.start(action === "lint" ? "Linting" : "Scanning");
       try {
         const run = action === "lint"
@@ -157,8 +164,8 @@ export async function runInteractive(): Promise<void> {
       if (bail(query)) break;
       const verified = await p.confirm({ message: "Verified skills only?", initialValue: false });
       if (bail(verified)) break;
-      const s = p.spinner();
-      s.start("Searching");
+      const s = p.spinner("hop");
+      s.start(`Searching for ${safeText(String(query))}`);
       try {
         const run = await runSearch(String(query), { verified: Boolean(verified), limit: "20" });
         s.stop(`${run.items.length} result${run.items.length === 1 ? "" : "s"}`);
@@ -207,12 +214,16 @@ export async function runInteractive(): Promise<void> {
       break;
     }
     case "update": {
+      const s = p.spinner("walk");
+      s.start("Updating installed skills");
       try {
         const run = await runUpdate([], {});
+        const n = new Set(run.updated).size;
+        s.stop(n ? `Updated ${n} skill${n === 1 ? "" : "s"}` : "Done", run.exitCode === 0 ? 0 : 2);
         console.log(run.output);
         process.exitCode = run.exitCode;
       } catch (err) {
-        p.log.error(err instanceof Error ? err.message : String(err));
+        s.stop(pc.red(err instanceof Error ? err.message : String(err)), 2);
         process.exitCode = 1;
       }
       break;

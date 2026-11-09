@@ -5,6 +5,7 @@ import type { LintResult } from "@skillmds/core";
 import { resolveSource } from "../source.js";
 import { createClient } from "../api.js";
 import { decorate } from "../ui.js";
+import { waitFor } from "../brand.js";
 
 export interface PublishFlags {
   force?: boolean;
@@ -75,7 +76,7 @@ export function publishCommand(): Command {
     .option("--dry-run", "lint only; do not publish")
     .action(async (target: string, opts: PublishFlags, cmd: Command) => {
       const merged = { ...cmd.parent?.opts(), ...opts };
-      const run = await runPublish(target, merged);
+      const run = await waitFor("walk", merged.dryRun ? "Checking" : "Publishing", runPublish(target, merged));
       console.log(run.output);
       process.exitCode = run.exitCode;
     });

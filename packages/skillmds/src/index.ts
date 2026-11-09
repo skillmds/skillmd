@@ -88,7 +88,7 @@ program.addCommand(logoutCommand());
 // output is piped / non-interactive (CI).
 if (process.argv.slice(2).length === 0) {
   if (process.stdout.isTTY) {
-    await runInteractive();
+    await runInteractive({ version });
     process.exit(process.exitCode ?? 0);
   }
   program.outputHelp();

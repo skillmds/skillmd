@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { slugify } from "@skillmds/core";
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
 import pc from "picocolors";
 import { promptIf, nonInteractiveHint } from "../env.js";
 

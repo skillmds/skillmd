@@ -2,6 +2,14 @@
 
 All notable changes to `get-skill` (published as `skillmds` until 1.3.6) are documented here. Versions follow [semver](https://semver.org).
 
+## 1.3.9
+
+- **A new look.** `npx get-skill` on its own now opens with the SkillMD logo, its two orange squares dropping into place, and the menu right under it. Any key skips the animation, which takes under a second.
+- **Brand colours throughout.** Every question, picker and confirmation uses the SkillMD orange instead of cyan. Pickers show a one-line key reminder (`↑/↓ to move · enter to choose`, `space to select · enter to confirm`). Success is still green, warnings yellow and errors red.
+- **Loading lines made from the logo's squares.** Fetching a skill, searching, installing, updating, checking and publishing each show a small animation built from the two squares while they wait. `search`, `info`, `update`, `check` and `publish` show it on stderr and erase it when done, so their output is unchanged.
+- **Quiet where it should be.** Nothing animates in CI, when output is piped, with `--json`, or when an agent runs the CLI. With colour turned off (`NO_COLOR`) the logo prints plain. Consoles without block characters get the previous ASCII spinner.
+- Prompts now run on `@clack/core` directly, in place of `@clack/prompts`.
+
 ## 1.3.8
 
 - **Skills install all their files.** `add`, `update` and the MCP install tool now fetch every registry skill's bundle, not only skills marked as packs. Some skills were recorded as single-file while carrying scripts or references, and installed only their SKILL.md. A single-file skill whose bundle can't be reached still installs from its SKILL.md, as before.

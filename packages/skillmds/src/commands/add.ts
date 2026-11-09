@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { homedir } from "node:os";
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
 import { dirname, join, resolve } from "node:path";
 import pc from "picocolors";
 import { lint, parseSkillMd } from "@skillmds/core";
@@ -961,7 +961,7 @@ export interface AddUI {
 
 const clackUI: AddUI = {
   intro: (m) => p.intro(m),
-  spinner: () => p.spinner(),
+  spinner: () => p.spinner("drop"),
   message: (m) => p.log.message(m),
   outro: (m) => p.outro(m),
   cancel: (m) => p.cancel(m),

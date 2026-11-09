@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
 import pc from "picocolors";
 import { readConfig, writeConfig, configPath, hostOf, resolveApi } from "../config.js";
 import { promptIf, nonInteractiveHint } from "../env.js";

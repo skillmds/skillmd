@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { createClient } from "../api.js";
 import type { RegistrySkill } from "../api.js";
 import { safeText } from "../sanitize.js";
+import { waitFor } from "../brand.js";
 
 // Mirrors the JSON returned by GET /api/skills/:owner/:name (a superset of
 // RegistrySkill — that type only models the fields the installer needs to
@@ -100,7 +101,7 @@ export function infoCommand(): Command {
     .argument("<slug>", "owner/name, e.g. anthropic/pdf")
     .action(async (slug: string, _opts: unknown, cmd: Command) => {
       const flags = { ...cmd.parent?.opts() } as InfoFlags;
-      const run = await runInfo(slug, flags);
+      const run = await waitFor("drop", `Fetching ${slug}`, runInfo(slug, flags), { json: flags.json });
       if (run.output) (run.ok ? console.log : console.error)(run.output);
       process.exitCode = run.exitCode;
     });

@@ -3,7 +3,8 @@ import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import pc from "picocolors";
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
+import { brandWord } from "../brand.js";
 import { lint, toJson, toSarif, toGithub } from "@skillmds/core";
 import type { LintResult } from "@skillmds/core";
 import { resolveSource } from "../source.js";
@@ -82,8 +83,8 @@ export function lintCommand(): Command {
       }
 
       if (ui) {
-        p.intro(pc.bgCyan(pc.black(" skillmd lint ")));
-        const s = p.spinner();
+        p.intro(`${brandWord()}  ${pc.dim("lint")}`);
+        const s = p.spinner("walk");
         s.start(`Scanning ${target}`);
         try {
           const run = await runLint(target, opts);

@@ -1,6 +1,6 @@
 // What counts as "a project" for scope auto-detection. Lives outside the
 // command layer so the MCP server can answer the same question without
-// dragging commander and @clack/prompts into its entry chunk.
+// dragging commander and the prompt engine (@clack/core) into its entry chunk.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";

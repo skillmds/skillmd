@@ -2,6 +2,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { createClient } from "../api.js";
 import { safeText } from "../sanitize.js";
+import { waitFor } from "../brand.js";
 
 interface SearchFlags {
   category?: string;
@@ -97,7 +98,7 @@ export function searchCommand(): Command {
     .option("--json", "machine-readable output")
     .action(async (query: string, opts: SearchFlags, cmd: Command) => {
       const merged = { ...cmd.parent?.opts(), ...opts };
-      const run = await runSearch(query, merged);
+      const run = await waitFor("hop", `Searching for ${query}`, runSearch(query, merged), { json: Boolean(merged.json) });
       console.log(run.output);
     });
 }

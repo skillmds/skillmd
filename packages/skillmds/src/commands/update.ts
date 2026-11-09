@@ -13,6 +13,7 @@ import type { SkillFileInput } from "../installer.js";
 import { readLock } from "../lock.js";
 import { scopesFor } from "../env.js";
 import { GLYPH } from "../ui.js";
+import { waitFor } from "../brand.js";
 
 export interface UpdateFlags { global?: boolean; project?: boolean; check?: boolean; yes?: boolean; json?: boolean; token?: string; api?: string; insecureHttp?: boolean; cwd?: string; home?: string }
 export interface Latest { files: SkillFileInput[]; commit_sha?: string }
@@ -137,9 +138,19 @@ function scopeOptions(cmd: Command): Command {
 }
 export function updateCommand(): Command {
   return scopeOptions(new Command("update").description("Update installed skills from the source recorded in the lock file (re-lints before writing)").argument("[names...]", "specific skills (default: all tracked)").option("--check", "only report which skills have updates"))
-    .action(async (names: string[], opts: UpdateFlags, cmd: Command) => { const run = await runUpdate(names, { ...cmd.parent?.opts(), ...opts }); console.log(run.output); process.exitCode = run.exitCode; });
+    .action(async (names: string[], opts: UpdateFlags, cmd: Command) => {
+      const flags: UpdateFlags = { ...cmd.parent?.opts(), ...opts };
+      const run = await waitFor("walk", flags.check ? "Checking for updates" : "Updating skills", runUpdate(names, flags), { json: flags.json });
+      console.log(run.output);
+      process.exitCode = run.exitCode;
+    });
 }
 export function checkCommand(): Command {
   return scopeOptions(new Command("check").description("Report installed skills that have updates (alias of `update --check`)").argument("[names...]", "specific skills (default: all tracked)"))
-    .action(async (names: string[], opts: UpdateFlags, cmd: Command) => { const run = await runUpdate(names, { ...cmd.parent?.opts(), ...opts, check: true }); console.log(run.output); process.exitCode = run.exitCode; });
+    .action(async (names: string[], opts: UpdateFlags, cmd: Command) => {
+      const flags: UpdateFlags = { ...cmd.parent?.opts(), ...opts, check: true };
+      const run = await waitFor("walk", "Checking for updates", runUpdate(names, flags), { json: flags.json });
+      console.log(run.output);
+      process.exitCode = run.exitCode;
+    });
 }

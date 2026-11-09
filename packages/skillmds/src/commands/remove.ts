@@ -4,7 +4,7 @@
 import { Command } from "commander";
 import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import * as p from "@clack/prompts";
+import * as p from "../prompts.js";
 import pc from "picocolors";
 import { agentDir, canonicalDir } from "../agents.js";
 import type { ScopeOptions } from "../agents.js";
