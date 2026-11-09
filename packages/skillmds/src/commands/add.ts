@@ -236,21 +236,25 @@ export async function registryCandidate(
     name: skillName, slug: skillName, registrySlug, source, commit_sha: skill.commit_sha ?? undefined,
     verified: skill.verified, type: skill.type, securityFlags: skill.security_flags,
   };
+  // Every registry skill installs from its bundle: registry-stored, SHA-pinned,
+  // complete, and it survives upstream deletion/force-push. The type is not a
+  // reliable sign of companion files (on 2026-11-09 some singles had ten), so
+  // it is not asked; a single's bundle is just its SKILL.md.
+  const missing: string[] = [];
+  const bundle = await fetchBundle(client.base, registrySlug, client.token, { missing });
+  if (bundle && bundle.length) {
+    const sk = bundle.find((file) => file.path === "SKILL.md");
+    const note = bundleNote(bundle, missing);
+    return {
+      ...meta,
+      type: bundle.length > 1 ? "pack" : meta.type,
+      raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
+      files: bundle,
+      ...(note ? { note } : {}),
+    };
+  }
+  // The registry's copy is unavailable: a pack falls back to a live GitHub fetch.
   if (skill.type === "pack") {
-    // Prefer the registry bundle: registry-stored, SHA-pinned, and survives
-    // upstream deletion/force-push. Fall back to a live GitHub fetch.
-    const missing: string[] = [];
-    const bundle = await fetchBundle(client.base, registrySlug, client.token, { missing });
-    if (bundle && bundle.length) {
-      const sk = bundle.find((file) => file.path === "SKILL.md");
-      const note = bundleNote(bundle, missing);
-      return {
-        ...meta,
-        raw: sk ? sk.contents.toString("utf8") : skillMdFor(skill),
-        files: bundle,
-        ...(note ? { note } : {}),
-      };
-    }
     const pack = await resolvePackFiles(skill);
     if (pack) return { ...meta, ...pack };
   }

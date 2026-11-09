@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -930,5 +931,34 @@ describe("registryCandidate with a companion gone upstream", () => {
     const c = await registryCandidate("o", "p", "registry:o/p", { api, base: "https://api.test", token: undefined });
     expect(c.files?.map((f) => f.path)).toEqual(["SKILL.md", "README.md"]);
     expect(c.note).toMatch(/1 companion file is gone from the source repo and was not installed \(scripts\/gone\.ts\)/);
+  });
+
+  // robbyczgw-cla/web-search-plus was recorded as a single with 10 companion
+  // files, and installed only its SKILL.md: the bundle was fetched for packs only.
+  it("installs a single's companion files too", async () => {
+    const md = "---\nname: p\ndescription: d\n---\n# p\n";
+    vi.stubGlobal("fetch", async (url: string | URL) =>
+      String(url).includes("/bundle")
+        ? new Response(JSON.stringify({ files: [
+            { path: "SKILL.md", content_base64: Buffer.from(md).toString("base64"), storage: "inline" },
+            { path: "scripts/search.py", content_base64: Buffer.from("print(1)\n").toString("base64"), storage: "r2",
+              sha256: createHash("sha256").update("print(1)\n").digest("hex") },
+          ] }), { status: 200 })
+        : new Response("nope", { status: 404 }));
+    const { registryCandidate } = await import("./add.js");
+    const api = (async () => ({ slug: "o/p", title: "p", description: "d", type: "single", raw_md: md })) as never;
+    const c = await registryCandidate("o", "p", "registry:o/p", { api, base: "https://api.test", token: undefined });
+    expect(c.files?.map((f) => f.path)).toEqual(["SKILL.md", "scripts/search.py"]);
+    expect(c.type).toBe("pack");
+  });
+
+  it("falls back to the registry's SKILL.md when a single's bundle is unavailable", async () => {
+    const md = "---\nname: p\ndescription: d\n---\n# p\n";
+    vi.stubGlobal("fetch", async () => new Response("down", { status: 503 }));
+    const { registryCandidate } = await import("./add.js");
+    const api = (async () => ({ slug: "o/p", title: "p", description: "d", type: "single", raw_md: md })) as never;
+    const c = await registryCandidate("o", "p", "registry:o/p", { api, base: "https://api.test", token: undefined });
+    expect(c.files).toBeUndefined();
+    expect(c.raw).toBe(md);
   });
 });

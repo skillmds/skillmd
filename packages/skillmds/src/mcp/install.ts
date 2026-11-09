@@ -129,28 +129,30 @@ export async function installFromRegistry(args: Record<string, unknown>, ctx: To
 
   let files: SkillFileInput[] = [{ path: "SKILL.md", contents: raw }];
   let note = "";
-  if (skill.type === "pack") {
-    try {
-      const missing: string[] = [];
-      const bundle = await getBundle(ctx.base, `${owner}/${name}`, ctx.token, { missing });
-      if (bundle?.length) {
-        files = bundle.some((f) => f.path === "SKILL.md") ? bundle : [...bundle, { path: "SKILL.md", contents: raw }];
-        if (missing.length) note = missingFilesNote(missing);
-      } else {
-        const pack = await getPackFiles(skill);
-        if (pack) {
-          files = pack.files;
-          // resolvePackFiles degrades from the pinned commit to the repo's
-          // default branch. That is acceptable — but the caller asked for a
-          // pinned revision and did not get one, so say so.
-          if (pack.pinMiss) note = "pinned commit unavailable upstream — fetched the source repo's default branch instead";
-        } else note = "pack assets could not be fetched — only SKILL.md was written";
-      }
-    } catch (e) {
-      // A tampered pack is never a fallback case: refuse the whole install.
-      if (e instanceof IntegrityError) return notice(`Refused: ${owner}/${name} failed integrity verification — ${e.message}. Not installed.`);
-      note = `pack assets could not be fetched (${e instanceof Error ? e.message : String(e)}) — only SKILL.md was written`;
+  // The bundle for every skill, as the CLI's `add` does: the type doesn't
+  // reliably say whether a skill has companion files. Only a pack falls back to
+  // GitHub, and only a pack is told its assets are missing.
+  const pack = skill.type === "pack";
+  try {
+    const missing: string[] = [];
+    const bundle = await getBundle(ctx.base, `${owner}/${name}`, ctx.token, { missing });
+    if (bundle?.length) {
+      files = bundle.some((f) => f.path === "SKILL.md") ? bundle : [...bundle, { path: "SKILL.md", contents: raw }];
+      if (missing.length) note = missingFilesNote(missing);
+    } else if (pack) {
+      const fromGitHub = await getPackFiles(skill);
+      if (fromGitHub) {
+        files = fromGitHub.files;
+        // resolvePackFiles degrades from the pinned commit to the repo's
+        // default branch. That is acceptable — but the caller asked for a
+        // pinned revision and did not get one, so say so.
+        if (fromGitHub.pinMiss) note = "pinned commit unavailable upstream — fetched the source repo's default branch instead";
+      } else note = "pack assets could not be fetched — only SKILL.md was written";
     }
+  } catch (e) {
+    // A tampered bundle is never a fallback case: refuse the whole install.
+    if (e instanceof IntegrityError) return notice(`Refused: ${owner}/${name} failed integrity verification — ${e.message}. Not installed.`);
+    if (pack) note = `pack assets could not be fetched (${e instanceof Error ? e.message : String(e)}) — only SKILL.md was written`;
   }
 
   // The SKILL.md above is not necessarily the one linted a moment ago: both the

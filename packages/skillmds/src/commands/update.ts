@@ -54,9 +54,11 @@ export function makeDefaultUpdateDeps(opts: DefaultUpdateDepsOptions = {}): Upda
         let skill: RegistrySkill;
         try { skill = await api<RegistrySkill>(`/api/skills/${slug}`); }
         catch (e) { if ((e as { status?: number }).status === 404) return null; throw e; }
+        // The bundle for every skill, as `add` does: the type doesn't reliably
+        // say whether a skill has companion files.
+        const bundle = await fetchBundle(base, slug, token);
+        if (bundle?.length) return { files: bundle, commit_sha: skill.commit_sha ?? undefined };
         if (skill.type === "pack") {
-          const bundle = await fetchBundle(base, slug, token);
-          if (bundle?.length) return { files: bundle, commit_sha: skill.commit_sha ?? undefined };
           const pack = await resolvePackFiles(skill);
           if (pack) return { files: pack.files, commit_sha: skill.commit_sha ?? undefined };
         }
