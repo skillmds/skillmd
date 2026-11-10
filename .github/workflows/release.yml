@@ -9,6 +9,15 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "core-v[0-9]+.[0-9]+.[0-9]+"
+  # Re-run a release from its tag with the workflow on main: every publish
+  # step skips a version npm already has, so this finishes a release that
+  # stopped half-way (2026-11-10: get-skill 1.3.11 published, skillmds did not)
+  # without cutting a new version. Same file, so the same npm Trusted Publisher.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to (re)publish, e.g. v1.3.11"
+        required: true
 
 permissions:
   contents: write # GitHub Release
@@ -22,6 +31,8 @@ jobs:
     environment: SkillMD
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,7 +41,8 @@ jobs:
       - id: meta
         shell: bash
         run: |
-          TAG="$GITHUB_REF_NAME"
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           if [[ "$TAG" == core-v* ]]; then
             echo "pkg=@skillmds/core" >> "$GITHUB_OUTPUT"
             echo "dir=packages/core" >> "$GITHUB_OUTPUT"
@@ -58,13 +70,23 @@ jobs:
       - name: Publish to npm (provenance)
         # Authenticates via npm Trusted Publishing (OIDC, id-token: write above);
         # both packages trust skillmds/skillmd + release.yml. No npm token needed.
-        run: npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
+        run: |
+          if npm view "${{ steps.meta.outputs.pkg }}@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
+            echo "${{ steps.meta.outputs.pkg }}@${{ steps.meta.outputs.version }} is already on npm; skipping"
+          else
+            npm publish -w "${{ steps.meta.outputs.pkg }}" --provenance --access public
+          fi
       - name: Also publish as skillmds (the former name), same contents
         # Existing setups run `npx skillmds`; keep them current. Never blocks
         # the release: get-skill is the package.
+        # A manual re-run exists to finish this step, so there it must fail loudly.
         if: steps.meta.outputs.pkg == 'get-skill'
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name == 'push' }}
         run: |
+          if npm view "skillmds@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
+            echo "skillmds@${{ steps.meta.outputs.version }} is already on npm; skipping"
+            exit 0
+          fi
           cd packages/skillmds
           npm pkg set name=skillmds
           npm publish --provenance --access public
@@ -75,6 +97,7 @@ jobs:
           awk -v v="${{ steps.meta.outputs.version }}" '$0 == "## " v { f = 1; next } /^## / { f = 0 } f' \
             "${{ steps.meta.outputs.dir }}/CHANGELOG.md" > notes.md
           [ -s notes.md ] || echo "See CHANGELOG.md" > notes.md
-          gh release create "$GITHUB_REF_NAME" \
+          if gh release view "${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then echo "release exists; skipping"; exit 0; fi
+          gh release create "${{ steps.meta.outputs.tag }}" \
             --title "${{ steps.meta.outputs.pkg }}@${{ steps.meta.outputs.version }}" \
             --notes-file notes.md
