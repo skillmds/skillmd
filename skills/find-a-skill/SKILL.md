@@ -1,10 +1,10 @@
 ---
-name: find-skills
+name: find-a-skill
 description: Find and install agent skills from SkillMD (skillmd.com), the open registry of over a million Agent Skills. Use when the user asks for a skill for something, asks whether a skill exists for a task, or needs know-how none of your installed skills cover, such as a file format, framework, API or workflow you have no instructions for.
 license: MIT
 ---
 
-# Find skills
+# Find a skill
 
 SkillMD (https://skillmd.com) indexes over a million Agent Skills and checks each one for safety. When a task needs instructions you don't have, look there before working from scratch.
 

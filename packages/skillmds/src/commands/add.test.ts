@@ -646,12 +646,12 @@ describe("runAddWithUI framing", () => {
   });
 });
 
-describe("the find-skills offer", () => {
+describe("the find-a-skill offer", () => {
   const tty = { stdinTTY: true, stdoutTTY: true, env: {} };
-  const FIND = `---\nname: find-skills\ndescription: Find and install agent skills from the SkillMD registry when a task needs one.\n---\n\n# Find skills\n\n${"body ".repeat(50)}`;
-  const findSkills: AddCandidate = { name: "find-skills", raw: FIND, slug: "find-skills", source: "registry:skillmd/find-skills", registrySlug: "skillmd/find-skills" };
+  const FIND = `---\nname: find-a-skill\ndescription: Find and install agent skills from the SkillMD registry when a task needs one.\n---\n\n# Find a skill\n\n${"body ".repeat(50)}`;
+  const findASkill: AddCandidate = { name: "find-a-skill", raw: FIND, slug: "find-a-skill", source: "registry:skillmd/find-a-skill", registrySlug: "skillmd/find-a-skill" };
   const deps = (asked: string[]): AddDeps => ({
-    resolve: async (arg) => { asked.push(arg); return arg === "skillmd/find-skills" ? [findSkills] : [tracked("demo")]; },
+    resolve: async (arg) => { asked.push(arg); return arg === "skillmd/find-a-skill" ? [findASkill] : [tracked("demo")]; },
     fireInstall: () => {},
   });
   function ui(answer: boolean | null) {
@@ -672,9 +672,10 @@ describe("the find-skills offer", () => {
     const first = ui(true);
     await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps(asked) });
     expect(first.questions).toHaveLength(1);
-    expect(asked).toEqual(["o/demo", "skillmd/find-skills"]);
-    expect(readLock({ global: true, home }).skills["find-skills"]?.source).toBe("registry:skillmd/find-skills");
-    expect(first.messages.at(-1)).toContain("find-skills added");
+    expect(first.questions[0]).toContain("find-a-skill");
+    expect(asked).toEqual(["o/demo", "skillmd/find-a-skill"]);
+    expect(readLock({ global: true, home }).skills["find-a-skill"]?.source).toBe("registry:skillmd/find-a-skill");
+    expect(first.messages.at(-1)).toContain("find-a-skill added");
 
     const again = ui(true);
     await runAddWithUI("o/demo", flags(home, cwd), { ui: again.u, term: tty, deps: deps([]) });
@@ -688,18 +689,55 @@ describe("the find-skills offer", () => {
     await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps(asked) });
     expect(first.questions).toHaveLength(1);
     expect(asked).toEqual(["o/demo"]);
-    expect(readLock({ global: true, home }).skills["find-skills"]).toBeUndefined();
+    expect(readLock({ global: true, home }).skills["find-a-skill"]).toBeUndefined();
 
     const again = ui(true);
     await runAddWithUI("o/demo", flags(home, cwd), { ui: again.u, term: tty, deps: deps([]) });
     expect(again.questions).toEqual([]);
   });
 
-  it("is not asked when the install is find-skills itself", async () => {
+  it("is not asked when the install is find-a-skill itself, or its old find-skills slug", async () => {
+    for (const slug of ["skillmd/find-a-skill", "skillmd/find-skills"]) {
+      const home = tmp(); const cwd = tmp();
+      const only = ui(true);
+      await runAddWithUI(slug, flags(home, cwd), { ui: only.u, term: tty, deps: deps([]) });
+      expect(only.questions).toEqual([]);
+    }
+  });
+
+  it("is not asked when SkillMD's skill is already installed under its old find-skills name", async () => {
     const home = tmp(); const cwd = tmp();
-    const only = ui(true);
-    await runAddWithUI("skillmd/find-skills", flags(home, cwd), { ui: only.u, term: tty, deps: deps([]) });
-    expect(only.questions).toEqual([]);
+    const old: AddCandidate = { ...findASkill, name: "find-skills", slug: "find-skills", source: "registry:skillmd/find-skills", registrySlug: "skillmd/find-skills" };
+    await runAdd("skillmd/find-skills", { ...flags(home, cwd), yes: true }, { resolve: async () => [old], fireInstall: () => {} });
+    const after = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: after.u, term: tty, deps: deps([]) });
+    expect(after.questions).toEqual([]);
+  });
+
+  // Vercel's `npx skills` installs its own find-skills into the same shared
+  // ~/.agents/skills; ours used that name too, so its install could only fail.
+  it("installs next to another tool's find-skills folder", async () => {
+    const home = tmp(); const cwd = tmp();
+    const theirs = join(home, ".agents", "skills", "find-skills");
+    mkdirSync(theirs, { recursive: true });
+    writeFileSync(join(theirs, "SKILL.md"), "---\nname: find-skills\ndescription: someone else's\n---\n");
+    const first = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps([]) });
+    expect(first.messages.at(-1)).toContain("find-a-skill added");
+    expect(readFileSync(join(theirs, "SKILL.md"), "utf8")).toContain("someone else's");
+  });
+
+  it("says why when it could not be added, instead of 'try later'", async () => {
+    const home = tmp(); const cwd = tmp();
+    const inTheWay = join(home, ".agents", "skills", "find-a-skill");
+    mkdirSync(inTheWay, { recursive: true });
+    writeFileSync(join(inTheWay, "SKILL.md"), "---\nname: find-a-skill\ndescription: hand-made\n---\n");
+    const first = ui(true);
+    await runAddWithUI("o/demo", flags(home, cwd), { ui: first.u, term: tty, deps: deps([]) });
+    const last = first.messages.at(-1)!;
+    expect(last).toContain("find-a-skill was not added");
+    expect(last).toContain("not tracked by skillmd");
+    expect(last).not.toMatch(/try later/i);
   });
 });
 

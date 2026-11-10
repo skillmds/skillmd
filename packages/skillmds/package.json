@@ -1,6 +1,6 @@
 {
   "name": "get-skill",
-  "version": "1.3.9",
+  "version": "1.3.10",
   "description": "Find, install, lint and publish Agent Skills (SKILL.md) from skillmd.com: the get-skill CLI and MCP server.",
   "license": "MIT",
   "author": "SkillMD",

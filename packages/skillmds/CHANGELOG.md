@@ -2,6 +2,11 @@
 
 All notable changes to `get-skill` (published as `skillmds` until 1.3.6) are documented here. Versions follow [semver](https://semver.org).
 
+## 1.3.10
+
+- **find-skills is now find-a-skill.** SkillMD's skill-finder shared its name with Vercel's widely installed `find-skills`, and both go into the same `~/.agents/skills` folder, so for anyone who already had Vercel's the offer after an install could only fail. It is now `skillmd/find-a-skill`, the old `skillmd/find-skills` address redirects to it, and an earlier install under the old name counts as already added.
+- **A failed follow-up install says why.** When the find-a-skill offer can't install, the message gives the reason (for example a folder already in the way) instead of "try later", along with the command to add it yourself.
+
 ## 1.3.9
 
 - **A new look.** `npx get-skill` on its own now opens with the SkillMD logo, its two orange squares dropping into place, and the menu right under it. Any key skips the animation, which takes under a second.

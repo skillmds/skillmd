@@ -18,7 +18,7 @@ import { detectHostAgent, isInteractive, nonInteractiveHint, realTerminal } from
 import type { Terminal } from "../env.js";
 import { readConfig, writeConfig, telemetryDisabled } from "../config.js";
 import { safeText } from "../sanitize.js";
-import { GLYPH, banner, renderInstallSummary } from "../ui.js";
+import { GLYPH, banner, renderInstallSummary, stripAnsi } from "../ui.js";
 import type { PathCtx } from "../ui.js";
 
 // Re-exported so `skillmd add`'s long-standing public surface keeps working for
@@ -474,7 +474,7 @@ export interface AddResult {
   /** The user backed out of a prompt; nothing was written. */
   cancelled?: boolean;
   /** Where an install went, and to which agents: a follow-up install (the
-   *  find-skills offer) lands in the same place without asking again. */
+   *  find-a-skill offer) lands in the same place without asking again. */
   scope?: "global" | "project";
   agents?: string[];
 }
@@ -972,31 +972,47 @@ const clackUI: AddUI = {
 };
 
 /** SkillMD's own skill-finder: tells the agent to look on SkillMD when a task
- *  needs a skill it doesn't have. */
-export const FIND_SKILLS = "skillmd/find-skills";
+ *  needs a skill it doesn't have. It was published as skillmd/find-skills, the
+ *  same name as Vercel's widely installed find-skills: both land in the shared
+ *  ~/.agents/skills, so for anyone who had theirs the install could only fail.
+ *  The registry redirects the old slug here. */
+export const FIND_A_SKILL = "skillmd/find-a-skill";
+const FIND_A_SKILL_SOURCES = [`registry:${FIND_A_SKILL}`, "registry:skillmd/find-skills"];
 
-/** Offer find-skills once, after a successful install in a terminal, into the
+/** Why a follow-up install failed, in one line: the first blocked reason, else
+ *  the last non-empty line of its output. */
+function failureReason(r: AddResult): string | undefined {
+  const blocked = r.blocked[0]?.reason;
+  if (blocked) return blocked;
+  const lines = stripAnsi(r.output).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines.at(-1);
+}
+
+/** Offer find-a-skill once, after a successful install in a terminal, into the
  *  same scope and agents. Recorded as offered before asking, so a yes, a no or
  *  a Ctrl-C all mean it is never asked again; an agent driving the CLI, -y and
  *  --json never get here (runAddWithUI only draws for an interactive human). */
 async function offerFindSkills(source: string, flags: AddFlags, run: AddResult, ui: AddUI, deps: AddDeps): Promise<void> {
   if (!ui.confirm || run.exitCode !== 0 || !run.written.length || !run.scope || !run.agents?.length) return;
-  if (source.replace(/^registry:/, "").toLowerCase() === FIND_SKILLS) return;
+  if (FIND_A_SKILL_SOURCES.includes(`registry:${source.replace(/^registry:/, "").toLowerCase()}`)) return;
   const cfg = readConfig(flags.home);
   if (cfg.findSkillsOffered) return;
   const global = run.scope === "global";
   const lock = readLock({ global, cwd: flags.cwd, home: flags.home });
-  if (Object.values(lock.skills).some((e) => e.source === `registry:${FIND_SKILLS}`)) return;
+  if (Object.values(lock.skills).some((e) => FIND_A_SKILL_SOURCES.includes(e.source))) return;
   try { writeConfig({ ...cfg, findSkillsOffered: true }, flags.home); } catch { /* best-effort: worst case it asks again */ }
-  const yes = await ui.confirm("Also add find-skills, so your agent can look for more skills on SkillMD when a task needs one?");
+  const yes = await ui.confirm("Also add find-a-skill, so your agent can look for more skills on SkillMD when a task needs one?");
   if (!yes) return;
-  const r = await runAdd(FIND_SKILLS, {
+  const r = await runAdd(FIND_A_SKILL, {
     ...flags, yes: true, json: false, skill: undefined, list: undefined, ref: undefined,
     global, project: !global, agent: run.agents,
   }, deps);
+  // On failure say why: "try later" sent people back to a retry that could
+  // only fail the same way (a folder already in the way, a blocked install).
+  const why = r.exitCode === 0 ? "" : failureReason(r);
   ui.message(r.exitCode === 0
-    ? `${pc.green(GLYPH.ok)} find-skills added`
-    : pc.yellow(`${GLYPH.warn} find-skills could not be added. Try later: npx get-skill add ${FIND_SKILLS}`));
+    ? `${pc.green(GLYPH.ok)} find-a-skill added`
+    : pc.yellow(`${GLYPH.warn} find-a-skill was not added${why ? `: ${why}` : ""}. To add it yourself: npx get-skill add ${FIND_A_SKILL}`));
 }
 
 export interface AddUIOptions {
