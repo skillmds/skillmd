@@ -18,11 +18,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skillmds/skillmd.git"
+    "url": "git+https://github.com/skillmds/SkillMD.git"
   },
   "homepage": "https://skillmd.com",
   "bugs": {
-    "url": "https://github.com/skillmds/skillmd/issues"
+    "url": "https://github.com/skillmds/SkillMD/issues"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

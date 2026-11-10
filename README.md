@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/get-skill"><img src="https://img.shields.io/npm/v/get-skill.svg?label=get-skill" alt="get-skill on npm"></a>
   <a href="https://www.npmjs.com/package/@skillmds/core"><img src="https://img.shields.io/npm/v/%40skillmds%2Fcore.svg?label=%40skillmds%2Fcore" alt="@skillmds/core on npm"></a>
   <a href="https://www.npmjs.com/package/get-skill"><img src="https://img.shields.io/npm/dm/get-skill.svg" alt="npm downloads"></a>
-  <a href="https://github.com/skillmds/skillmd/actions/workflows/ci.yml"><img src="https://github.com/skillmds/skillmd/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/skillmds/SkillMD/actions/workflows/ci.yml"><img src="https://github.com/skillmds/SkillMD/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license"></a>
 </p>
 

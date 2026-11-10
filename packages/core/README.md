@@ -1,7 +1,7 @@
 # @skillmds/core
 
 [![npm version](https://img.shields.io/npm/v/@skillmds/core.svg)](https://www.npmjs.com/package/@skillmds/core)
-[![license](https://img.shields.io/npm/l/@skillmds/core.svg)](https://github.com/skillmds/skillmd/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@skillmds/core.svg)](https://github.com/skillmds/SkillMD/blob/main/LICENSE)
 
 The SKILL.md engine behind [SkillMD](https://skillmd.com): parser, lint rules, security scanner, quality score, and report formatters for [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills). The same code runs in the SkillMD registry, the [`get-skill` CLI and MCP server](https://www.npmjs.com/package/get-skill) — so a skill that lints clean locally is valid everywhere.
 
@@ -40,8 +40,8 @@ result.security;     // { flags: ["network_calls", ...], findings: [...] }
 | `isAllowedSourceUrl(url)` | Client-side SSRF guard for companion-file downloads. |
 | `slugify(name)` / `categorize(...)` | Naming + category helpers shared with the registry. |
 
-Full rule reference: [docs/rules.md](https://github.com/skillmds/skillmd/blob/main/docs/rules.md).
+Full rule reference: [docs/rules.md](https://github.com/skillmds/SkillMD/blob/main/docs/rules.md).
 
 ## License
 
-[MIT](https://github.com/skillmds/skillmd/blob/main/LICENSE)
+[MIT](https://github.com/skillmds/SkillMD/blob/main/LICENSE)

@@ -7,7 +7,7 @@ Thanks for helping make Agent Skills safer and easier to share. Issues and pull 
 Node **≥ 18** runs the published packages; Node **≥ 20** is recommended for development (vitest and tsup are happiest there).
 
 ```bash
-git clone https://github.com/skillmds/skillmd.git
+git clone https://github.com/skillmds/SkillMD.git
 cd skillmd
 npm ci
 npm run build        # builds @skillmds/core, then skillmds

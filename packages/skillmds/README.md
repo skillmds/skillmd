@@ -5,15 +5,15 @@
 # get-skill
 
 [![npm version](https://img.shields.io/npm/v/get-skill.svg)](https://www.npmjs.com/package/get-skill)
-[![license](https://img.shields.io/npm/l/get-skill.svg)](https://github.com/skillmds/skillmd/blob/main/LICENSE)
-[![source](https://img.shields.io/badge/source-skillmds%2Fskillmd-blue?logo=github)](https://github.com/skillmds/skillmd)
+[![license](https://img.shields.io/npm/l/get-skill.svg)](https://github.com/skillmds/SkillMD/blob/main/LICENSE)
+[![source](https://img.shields.io/badge/source-skillmds%2Fskillmd-blue?logo=github)](https://github.com/skillmds/SkillMD)
 
 Tools for working with [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) (`SKILL.md`) from the [SkillMD](https://skillmd.com) registry. One package, two binaries:
 
 - **`skillmd`** — a CLI to lint, scan, search, install, and publish skills.
 - **`get-skill`** — the same CLI, and an MCP server exposing the registry to MCP clients (Claude Code, Claude Desktop, Cursor, …).
 
-Both validate `SKILL.md` with the same engine ([`@skillmds/core`](https://www.npmjs.com/package/@skillmds/core)), so the CLI and the registry apply identical rules. Source lives at [github.com/skillmds/skillmd](https://github.com/skillmds/skillmd).
+Both validate `SKILL.md` with the same engine ([`@skillmds/core`](https://www.npmjs.com/package/@skillmds/core)), so the CLI and the registry apply identical rules. Source lives at [github.com/skillmds/SkillMD](https://github.com/skillmds/SkillMD).
 
 ## Install
 
@@ -205,4 +205,4 @@ Resolution order, highest first:
 
 ## License
 
-[MIT](https://github.com/skillmds/skillmd/blob/main/LICENSE)
+[MIT](https://github.com/skillmds/SkillMD/blob/main/LICENSE)
